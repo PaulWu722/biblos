@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% block title %}登入 - 聖經中的鑽石{% endblock %}
+{% block body %}
+<form class="card" method="post" action="/login">
+<h2>登入 / 加入</h2>
+<p>只要輸入手機號碼就能登入，不需要密碼。第一次使用會請你取一個暱稱。你的手機號碼不會顯示給其他人。</p>
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+<input type="tel" name="phone" inputmode="tel" placeholder="手機號碼，例如 0912345678" value="{{ phone }}" {{ 'readonly' if need_nick else 'autofocus' }} required>
+{% if need_nick %}<input type="text" name="nick" maxlength="12" placeholder="暱稱（最多 12 字）" autofocus required>{% endif %}
+{% if nxt %}<input type="hidden" name="next" value="{{ nxt }}">{% endif %}
+<button>{{ '建立並登入' if need_nick else '下一步' }}</button>
+</form>
+<div class="hint"><a href="/admin/login">🛠 管理員後台</a></div>
+{% endblock %}

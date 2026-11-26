@@ -1,0 +1,1 @@
+{% macro animal(n, i=0) %}{% set t = (n + i) % 4 %}<span class="z t{{t}}" title="{{ animal_name(n) }}" style="--d:-{{ ((n*7 + i*13) % 10) / 4 }}s">{% if t==2 %}<span class="f"><img src="/static/animals/{{ '%02d'|format(n) }}.webp" alt=""></span>{% else %}<img src="/static/animals/{{ '%02d'|format(n) }}.webp" alt="">{% endif %}</span>{% endmacro %}

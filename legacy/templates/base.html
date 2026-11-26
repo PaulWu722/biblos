@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}聖經中的鑽石{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11">
+</head>
+<body><div class="wrap">
+<h1 class="site">💎 聖　經　中　的　鑽　石</h1>
+{% if g.user %}
+<nav class="top">
+<a class="m {{ 'on' if active=='read' }}" href="/read">📖 開始閱讀</a>
+<a class="m {{ 'on' if active=='progress' }}" href="/progress">🏃 奔跑賽程</a>
+<a class="me" href="/profile" title="個人設定">{% set src = avatar_src(g.user.avatar) %}{% if src %}<img class="av" src="{{ src }}" alt="">{% else %}<span class="av ph">{{ g.user.nick[:1] }}</span>{% endif %}<span>{{ g.user.nick }}</span></a>
+</nav>
+{% endif %}
+{% block body %}{% endblock %}
+</div>
+
+</body></html>

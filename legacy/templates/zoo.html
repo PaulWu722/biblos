@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% block title %}{{ nick }}的動物園{% endblock %}
+{% block body %}
+<h2 class="title">🐾 {{ nick }}的動物園</h2>
+<div class="meta">共 {{ animals|length }} 隻 · 收集 {{ kinds }} / {{ total_kinds }} 種</div>
+<div class="pen big">
+{% for day, a in animals %}{{ animal(a, loop.index) }}{% else %}<span class="hint">還沒有小動物，每天讀完任意 3 篇就能獲得</span>{% endfor %}
+</div>
+<div class="nav"><a href="/progress">← 回奔跑賽程</a></div>
+{% endblock %}

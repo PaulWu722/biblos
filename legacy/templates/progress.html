@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% block title %}奔跑賽程{% endblock %}
+{% block body %}
+<div class="hint">🏃 大家一起跑！每天讀完任意 3 篇（補讀也算），就能隨機獲得一隻小動物 🐾　點動物園可放大看</div>
+{% for p in people %}
+<div class="person {{ 'me' if p.id == me }}">
+<div class="l">
+<div class="nm"><div class="who">{% set src = avatar_src(p.avatar) %}{% if src %}<img class="av" src="{{ src }}" alt="">{% else %}<span class="av ph">{{ p.nick[:1] }}</span>{% endif %}{{ p.nick }}{% if p.id == me %}（我）{% endif %}</div><span>今日 {{ p.today }}/{{ nbooks }}</span></div>
+{% for k, b in books.items() %}
+<div class="bk"><span>{{ b.short }}</span><div class="bar"><i style="width:{{ (p.counts[k] * 100 / totals[k])|round(1) }}%"></i></div><b>{{ p.counts[k] }}/{{ totals[k] }}</b></div>
+{% endfor %}
+</div>
+<a class="minizoo" href="/zoo/{{ p.id }}">
+{% if p.animals %}{% for a in p.animals %}{{ animal(a, loop.index) }}{% endfor %}
+{% if p.zoo_total > p.animals|length %}<span class="more">共 {{ p.zoo_total }} 隻</span>{% endif %}
+{% else %}<span class="empty">動物園<br>還是空的</span>{% endif %}
+</a>
+</div>
+{% endfor %}
+{% endblock %}

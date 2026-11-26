@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% from "_tabs.html" import tabs %}
+{% block title %}{{ title }} - {{ book.name }}{% endblock %}
+{% block body %}
+<div class="date">{{ day.year }} 年 {{ day.month }} 月 {{ day.day }} 日{% if not is_today %}（非今日）{% endif %}</div>
+{% set today_d = day if is_today else none %}{{ tabs(books, status, key, day, is_today, missed_n) }}
+<div class="todaycard"><div><div class="t">{{ '今日進度' if is_today else '這天進度' }}</div><div class="n">{{ ndone }} <small>/ {{ books|length }} 項完成{% if ndone == books|length %} 🎉{% endif %}</small></div>
+<div class="goal" id="tgoal" data-n="{{ today_reads }}" data-goal="{{ goal }}" data-got="{{ 1 if got_today else 0 }}">{% if got_today %}🐾 今天的動物已經到手{% else %}今天已讀 {{ today_reads }} 篇，再讀 {{ goal - today_reads if goal > today_reads else 0 }} 篇得一隻動物{% endif %}</div></div>
+{% if my_animals %}<div class="pets">{% for a in my_animals %}<img src="/static/animals/{{ '%02d'|format(a) }}.webp" alt="" title="{{ animal_name(a) }}">{% endfor %}</div>{% endif %}</div>
+<form class="bgbar" method="post" action="/bg">
+<input type="hidden" name="next" value="/read/{{key}}{% if not is_today %}?d={{day.isoformat()}}{% endif %}">
+<span>閱讀背景</span>
+{% for pk, pv in presets.items() %}<button name="bg" value="p:{{pk}}" title="{{pv[2]}}" class="dot {{'sel' if bg_spec=='p:'+pk}}" style="background:{{pv[0]}}"></button>{% endfor %}
+<label class="dot pick {{'sel' if bg_spec.startswith('c:')}}" title="自選顏色" style="{{'background:'+bg[0] if bg_spec.startswith('c:')}}">🎨<input type="color" value="{{ bg[0] }}" onchange="this.nextElementSibling.value='c:'+this.value;this.form.submit()"><input type="hidden" name="bg"></label>
+</form>
+<section class="paper {{ 'mist' if bg_spec=='p:mist' }}" {% if bg_spec != 'p:mist' %}style="background:{{bg[0]}};color:{{bg[1]}}"{% endif %}>
+<div class="meta">{{ book.name }}{% if book.sub %} · {{ book.sub }}{% endif %} · 第 {{ n }} / {{ total }} 篇</div>
+<h2 class="title">{{ title }}</h2>
+<div class="tts" id="tts" hidden data-key="{{ key }}" data-day="{{ day.isoformat() }}" data-finished="{{ 1 if finished else 0 }}" data-today="{{ day.isoformat() if is_today else '' }}">
+<div class="trow">
+<button type="button" id="tts-play" class="tp">🔊 朗讀</button>
+<button type="button" id="tts-stop" class="ts" hidden>⏹ 停止</button>
+<button type="button" id="tts-gear" class="ts" title="朗讀設定">⚙︎ 設定</button>
+</div>
+<div class="topt" id="tts-opt" hidden>
+<label>語音 <select id="tts-voice"></select></label>
+<label>語速 <select id="tts-rate"><option value="0.8">慢</option><option value="1" selected>正常</option><option value="1.25">快</option><option value="1.5">較快</option></select></label>
+<label class="ck2"><input type="checkbox" id="opt-auto" checked> 唸完自動標記「完成閱讀」</label>
+<label class="ck2"><input type="checkbox" id="opt-cont" checked> 連播今天還沒讀的篇章</label>
+<label class="ck2"><input type="checkbox" id="opt-skip" checked> 略過經節出處，例如（弗四11）</label>
+<div class="vhint" id="tts-vhint"></div>
+<button type="button" class="tclose" onclick="document.getElementById('tts-opt').hidden=true">收起設定 ▲</button>
+</div>
+<div class="tnow" id="tts-now" hidden></div>
+</div>
+<article id="article">
+{% for p in paras %}<p>{{ p }}</p>
+{% endfor %}
+</article>
+<form class="done-box" method="post" action="/read/{{key}}/done">
+<input type="hidden" name="idx" value="{{ idx }}">
+<input type="hidden" name="d" value="{{ day.isoformat() }}">
+<input type="hidden" name="next" value="/read/{{key}}{% if not is_today %}?d={{day.isoformat()}}{% endif %}">
+{% if finished %}<div class="ok">✅ 已完成閱讀</div><input type="hidden" name="undo" value="1"><button class="undo">取消完成</button>
+{% else %}<button>完成閱讀</button>{% endif %}
+</form>
+</section>
+<div class="nav">
+<a href="/read/{{key}}?d={{ prev_day.isoformat() }}">← 前一天</a>
+{% if not is_today %}<a href="/read/{{key}}">回到今天</a>{% else %}<span class="now">今天</span>{% endif %}
+<a href="/read/{{key}}?d={{ next_day.isoformat() }}">後一天 →</a>
+</div>
+{% if new_animal is not none %}
+<div class="award" onclick="this.remove()"><div class="box">
+<div style="font-size:1.1rem;font-weight:700">🎉 今天讀完 {{ goal }} 篇了！</div>
+<div class="hint">恭喜你獲得 <b>{{ animal_name(new_animal) }}</b></div>
+{{ animal(new_animal, 0) }}
+<div><button type="button">收進動物園</button></div>
+</div></div>
+{% endif %}
+<script src="/static/tts.js?v=3"></script>
+{% endblock %}

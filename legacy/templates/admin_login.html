@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}後台登入{% endblock %}
+{% block body %}
+<form class="card" method="post">
+<h2>後台管理</h2>
+<p>請輸入後台金鑰（在網站資料夾的 admin.key 檔案裡）。</p>
+{% if err %}<div class="err">{{ err }}</div>{% endif %}
+<input type="password" name="key" autofocus required style="width:100%;font:inherit;padding:12px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px">
+<button>進入</button>
+</form>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% macro tabs(books, status, key, day, is_today, missed_n) %}
+<nav class="tabs">
+{% for k, b in books.items() %}
+<a href="/read/{{k}}{% if not is_today %}?d={{day.isoformat()}}{% endif %}" data-k="{{k}}" class="{{'on' if key==k}}">{{b.name}}{% if b.sub %}<small>{{b.sub}}</small>{% endif %}{% if status[k] %}<span class="ck">✓</span>{% endif %}</a>
+{% endfor %}
+<a href="/missed" class="late {{'on' if key=='missed'}}">⏰ 過期未讀<small>時間過了還沒讀</small>{% if missed_n %}<span class="ck bad">{{ missed_n if missed_n < 100 else '99+' }}</span>{% endif %}</a>
+</nav>
+{% endmacro %}

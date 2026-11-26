@@ -1,0 +1,3 @@
+*{box-sizing:border-box;margin:0}
+body{width:390px;height:844px;overflow:hidden;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif;position:relative}
+.status{height:44px;display:flex;justify-content:space-between;align-items:center;padding:0 24px;font-size:14px;font-weight:600}

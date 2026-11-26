@@ -1,0 +1,6 @@
+.DS_Store
+admin.key
+secret.key
+progress.db
+legacy/data/
+static/

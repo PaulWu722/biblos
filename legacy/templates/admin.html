@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% block title %}後台{% endblock %}
+{% block body %}
+<div style="display:flex;justify-content:space-between;align-items:center"><h2 class="title" style="margin:0">🛠 後台：所有人的情形</h2><a href="/admin/logout">登出後台</a></div>
+<div class="hint">{{ today.year }}/{{ today.month }}/{{ today.day }}</div>
+<div class="stats">
+<div><b>{{ summary.users }}</b>總人數</div>
+<div><b>{{ summary.active_today }}</b>今日有讀</div>
+<div><b>{{ summary.done_today }}</b>今日全完成</div>
+<div><b>{{ summary.reads }}</b>累計完成篇數</div>
+<div><b>{{ summary.animals }}</b>發出動物</div>
+</div>
+<div class="tblwrap"><table class="adm">
+<tr><th>暱稱</th><th>手機</th><th>加入</th><th>最近閱讀</th><th>今日</th><th>過期未讀</th>{% for b in books.values() %}<th>{{ b.short }}</th>{% endfor %}<th>動物</th></tr>
+{% for u in users %}
+<tr>
+<td class="nick">{% set src = avatar_src(u.avatar) %}{% if src %}<img class="av" src="{{ src }}" alt="">{% else %}<span class="av ph">{{ u.nick[:1] }}</span>{% endif %}<a href="/admin/u/{{ u.id }}">{{ u.nick }}</a></td>
+<td>{{ u.phone }}</td>
+<td>{{ u.created }}</td>
+<td>{{ u.last or '—' }}</td>
+<td class="{{ 'good' if u.today == nbooks }}">{{ u.today }}/{{ nbooks }}</td>
+<td class="{{ 'bad' if u.missed }}">{{ u.missed }}</td>
+{% for k in books %}<td>{{ u.counts[k] }}<small>/{{ totals[k] }}</small></td>{% endfor %}
+<td>{{ u.animals }}</td>
+</tr>
+{% endfor %}
+</table></div>
+{% endblock %}

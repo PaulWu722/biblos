@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_tabs.html" import tabs %}
+{% block title %}過期未讀 - 聖經中的鑽石{% endblock %}
+{% block body %}
+<div class="date">{{ day.year }} 年 {{ day.month }} 月 {{ day.day }} 日</div>
+{{ tabs(books, status, key, day, is_today, missed_n) }}
+<h2 class="title">⏰ 時間過了，還沒讀的</h2>
+{% if not missed_n %}
+<div class="hint">太棒了！目前沒有任何過期未讀的信息 🎉</div>
+{% else %}
+<div class="hint">共 {{ missed_n }} 篇。點「去讀」補讀，按「完成閱讀」後就會從這裡消失。</div>
+{% for k, rows in missed.items() if rows %}
+<div class="mbook"><h3>{{ books[k].name }}<span>{{ rows|length }} 篇</span></h3>
+{% for d, n, t in rows[:10] %}
+<a class="mrow" href="/read/{{k}}?d={{ d.isoformat() }}"><b>{{ d.month }}/{{ d.day }}</b><span>第 {{ n }} 篇　{{ t }}</span><em>去讀 →</em></a>
+{% endfor %}
+{% if rows|length > 10 %}<details><summary>顯示其餘 {{ rows|length - 10 }} 篇</summary>
+{% for d, n, t in rows[10:] %}
+<a class="mrow" href="/read/{{k}}?d={{ d.isoformat() }}"><b>{{ d.month }}/{{ d.day }}</b><span>第 {{ n }} 篇　{{ t }}</span><em>去讀 →</em></a>
+{% endfor %}</details>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

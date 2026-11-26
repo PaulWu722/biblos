@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_zoo.html" import animal with context %}
+{% block title %}後台 - {{ u.nick }}{% endblock %}
+{% block body %}
+<div class="nav" style="margin:0 0 10px"><a href="/admin">← 回後台</a></div>
+{% set src = avatar_src(u.avatar) %}
+<h2 class="title">{% if src %}<img class="av big" src="{{ src }}" alt=""><br>{% endif %}{{ u.nick }}</h2>
+<div class="meta">{{ u.phone }} · 加入 {{ u.created }}</div>
+<div class="mbook"><h3>過期未讀</h3>{% for n, c in missed.items() %}<div class="mrow"><b></b><span>{{ n }}</span><em>{{ c }} 篇</em></div>{% endfor %}</div>
+<div class="mbook"><h3>近 14 天每天完成篇數</h3>{% for r in perday %}<div class="mrow"><b></b><span>{{ r.ts }}</span><em>{{ r.n }} 篇</em></div>{% else %}<div class="hint">還沒有紀錄</div>{% endfor %}</div>
+<div class="mbook"><h3>最近完成（40 筆）</h3>{% for r in recent %}<div class="mrow"><b>{{ r.ts[5:] }}</b><span>{{ r.book }}　第 {{ r.n }} 篇　{{ r.title }}</span></div>{% else %}<div class="hint">還沒有紀錄</div>{% endfor %}</div>
+<div class="mbook"><h3>動物園<span style="color:var(--muted)">{{ animals|length }} 隻</span></h3>
+<div class="pen big">{% for d, a in animals %}{{ animal(a, loop.index) }}{% else %}<span class="hint">還沒有動物</span>{% endfor %}</div></div>
+{% endblock %}

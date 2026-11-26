@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}個人設定{% endblock %}
+{% block body %}
+{% set src = avatar_src(g.user.avatar) %}
+<div class="card">
+<h2>個人頭像</h2>
+<div style="text-align:center;margin-bottom:12px">{% if src %}<img class="av big" src="{{ src }}" alt="">{% else %}<span class="av big ph">{{ g.user.nick[:1] }}</span>{% endif %}</div>
+{% if ok %}<div class="okmsg">已更新 ✓</div>{% endif %}
+{% if aerr %}<div class="err">{{ aerr }}</div>{% endif %}
+<form method="post" action="/profile/avatar" enctype="multipart/form-data">
+<input type="file" name="photo" accept="image/*" style="margin-bottom:10px;width:100%">
+<button>上傳照片當頭像</button>
+</form>
+{% if mine %}
+<p style="margin-top:16px">或用你獲得的小動物當頭像：</p>
+<form method="post" action="/profile/avatar" class="pick">
+{% for a in mine %}<button name="animal" value="{{ a }}" class="pa"><img src="/static/animals/{{ '%02d'|format(a) }}.webp" alt=""></button>{% endfor %}
+</form>
+{% else %}<p style="margin-top:14px">每天讀完 3 篇獲得小動物後，也可以拿來當頭像。</p>{% endif %}
+{% if g.user.avatar %}<form method="post" action="/profile/avatar"><input type="hidden" name="reset" value="1"><button class="ghost">移除頭像</button></form>{% endif %}
+</div>
+<form class="card" method="post" action="/profile">
+<h2>暱稱</h2>
+{% if msg %}<div class="err">{{ msg }}</div>{% endif %}
+<input type="text" name="nick" maxlength="12" value="{{ g.user.nick }}" required>
+<button>儲存暱稱</button>
+</form>
+<div class="card"><a href="/logout">登出</a>　·　<a href="/admin">🛠 管理員後台</a></div>
+{% endblock %}

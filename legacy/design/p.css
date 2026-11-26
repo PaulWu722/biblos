@@ -1,0 +1,5 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:390px;height:844px;overflow:hidden;position:relative;font-family:"PingFang TC","Noto Sans TC",sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Songti TC","Noto Serif TC","STSong",serif}
+.sb{height:48px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 28px 6px;font-size:15px;font-weight:600}
+svg{display:block}
