@@ -4,3 +4,5 @@ secret.key
 progress.db
 legacy/data/
 static/
+island/node_modules/
+island/dist/
