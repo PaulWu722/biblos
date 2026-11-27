@@ -1,6 +1,8 @@
 // Single source of truth for every game number (see designstructure.md §1).
 export const RULES = {
   articlesPerEgg: 3,
+  /** Total articles read to move on: island n+1 opens at n × this. Islands hold any number of animals. */
+  readsPerScene: 60,
   questionsPerArticle: 2,
   xpPerArticle: 10,
   xpPerCorrect: 10,

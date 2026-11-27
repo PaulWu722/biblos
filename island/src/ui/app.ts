@@ -1,7 +1,7 @@
 import { RULES, TIER_LABEL, type EggTier } from '../../config/rules';
 import { SCENES, sceneById } from '../../config/scenes';
 import { SPECIES, speciesById } from '../../config/animals';
-import { upgradeCost } from '../core/engine';
+import { readsGoal, upgradeCost } from '../core/engine';
 import type { Animal, GameEvent, GameState } from '../core/types';
 import { fetchAdmin, fetchBoard, fetchIsland, fetchMe, getToken, login, setToken, type AdminRow, type Me, type Runner, type Visit } from '../data/api';
 import { BOOKS, BOOK_IDS, articleId, loadArticle, loadQuizIndex, loadTitles, type Article, type BookId } from '../data/articles';
@@ -55,7 +55,7 @@ async function openWith(adapter: StorageAdapter): Promise<void> {
   store = new Store(await adapter.load(), adapter);
   store.subscribe((s, ev) => {
     // Off the island page, the move to a new island waits for showIsland so the slide and transition are seen.
-    if (document.body.dataset.page === 'island') stage?.setScene(s.currentSceneId, s.unlockedSceneIds);
+    if (document.body.dataset.page === 'island') stage?.setScene(s.currentSceneId, s.unlockedSceneIds, lockedOf(s));
     stage?.setAnimals(s.animals, s.goldenScenes); announce(ev);
   });
 }
@@ -69,7 +69,7 @@ function toast(msg: string): void {
 function announce(events: GameEvent[]): void {
   for (const e of events) {
     if (e.type === 'LEVEL_UP') { const a = store!.state.animals.find((x) => x.id === e.animalId); toast(`${a ? speciesById(a.speciesId).name : '動物'}升到 Lv${e.level}「${LEVEL_NAME[e.level]}」！`); }
-    if (e.type === 'SCENE_UNLOCKED') { toast(`${sceneById(e.from).name}住滿了！大家一起搬到「${sceneById(e.to).name}」`); pendingMove = e.to; }
+    if (e.type === 'SCENE_UNLOCKED') { toast(`讀滿 ${readsGoal(e.from)} 篇了！大家一起搬到「${sceneById(e.to).name}」`); pendingMove = e.to; }
     if (e.type === 'GOLDEN_UNLOCKED') toast(`${sceneById(e.sceneId).name}的動物都長大了，開始發光跳舞！`);
   }
 }
@@ -123,7 +123,7 @@ const BEAR = `<div class="guide"><svg class="bear" viewBox="0 0 120 130" aria-hi
   <li>每讀完一篇信息，回答 ${RULES.questionsPerArticle} 題。</li>
   <li>讀 ${RULES.articlesPerEgg} 篇得一顆蛋。${RULES.articlesPerEgg} 篇共 ${RULES.articlesPerEgg * RULES.questionsPerArticle} 題，答對 ${T.rareMin} 題以上是稀有蛋，${T.preciousMin} 題是珍貴蛋，全對是傳說蛋。</li>
   <li>孵出動物，用經驗值幫牠長大。</li>
-  <li>島住滿了，大家就一起搬到下一座島。</li></ol></div></div>`;
+  <li>每讀滿 ${RULES.readsPerScene} 篇，大家就一起搬到下一座島。島上的動物沒有數量限制。</li></ol></div></div>`;
 function showLogin(): void {
   document.body.dataset.page = 'login';
   $('#tabs').innerHTML = '';
@@ -131,7 +131,7 @@ function showLogin(): void {
   let needNick = false;
   const draw = (phone = '', err = '') => {
     view.innerHTML = `${BEAR}<section class="panel login">
-      <h1>信息島</h1><p class="sub">讀信息、答題、孵蛋，讓島上住滿動物</p>
+      <h1>信息島</h1><p class="sub">讀信息、答題、孵蛋，讓島上越來越熱鬧</p>
       <form><label>手機號碼<input name="phone" inputmode="numeric" autocomplete="tel" value="${esc(phone)}" required></label>
       ${needNick ? '<label>暱稱（第一次登入）<input name="nick" maxlength="12" required></label>' : ''}
       <button class="primary">${needNick ? '建立並登入' : '登入'}</button>
@@ -147,7 +147,7 @@ function showLogin(): void {
         if ('need_nick' in r) { needNick = true; return draw(p); }
         setToken(r.token); me = r.me;
         await openGame(r.token);
-        stage ??= new IslandView($('#stage'), store!.state.currentSceneId, store!.state.unlockedSceneIds);
+        stage ??= new IslandView($('#stage'), store!.state.currentSceneId, store!.state.unlockedSceneIds, lockedOf(store!.state));
         stage.setAnimals(store!.state.animals, store!.state.goldenScenes);
         location.hash = '#/island'; route();
       } catch (err) { draw(p, err instanceof Error && err.message === 'bad phone' ? '手機號碼格式不對' : '登入失敗，請稍後再試'); }
@@ -158,8 +158,9 @@ function showLogin(): void {
 
 // ---------- 島嶼 ----------
 function showIsland(view: HTMLElement, s: GameState): void {
-  stage ??= new IslandView($('#stage'), s.currentSceneId, s.unlockedSceneIds);
-  stage.setScene(s.currentSceneId, s.unlockedSceneIds);
+  stage ??= new IslandView($('#stage'), s.currentSceneId, s.unlockedSceneIds, lockedOf(s));
+  stage.setScene(s.currentSceneId, s.unlockedSceneIds, lockedOf(s));
+  if (!pendingMove) stage.home();
   stage.setAnimals(s.animals, s.goldenScenes);
   document.body.dataset.scene = s.currentSceneId;
   if (pendingMove) { playTransition(pendingMove); pendingMove = null; }
@@ -167,21 +168,32 @@ function showIsland(view: HTMLElement, s: GameState): void {
   const eggs = s.eggs.filter((e) => !e.hatched).length;
   view.innerHTML = `<header class="hud">
       <a href="#/settings" class="logo" aria-label="設定">${ICON.sprout}</a>
-      <h1 data-len="${scene.name.length}"><span id="scene-name">${scene.name}</span><small id="scene-count">${s.animals.length}/${scene.capacity}</small></h1>
+      <h1 data-len="${scene.name.length}"><span id="scene-name">${scene.name}</span></h1>
       <a class="today" href="#/collection" aria-label="經驗值，到圖鑑升級">${ICON.star}<span>經驗值<br><b id="xp">${s.xp}</b></span></a>
     </header>
+    <p class="reads">${ICON.book}<span>${progress(s)}</span></p>
     <div class="hud-foot">
       ${eggs ? `<a class="pill" href="#/egg">${ICON.sprout}<span>孵化 ${eggs} 顆蛋</span></a>`
         : `<a class="pill" href="#/books">${ICON.sprout}<span>開始讀信息</span></a>`}
       <div class="divider"><i></i></div>
     </div>`;
-  // Swiping to a memory island shows its name and「回憶島」instead of the count.
-  stage.onView = (id, current) => {
-    $('#scene-name').textContent = sceneById(id).name;
-    $('#scene-name').parentElement!.dataset.len = String(sceneById(id).name.length);
-    $('#scene-count').textContent = current ? `${s.animals.length}/${scene.capacity}` : '回憶島';
+  // Swiping shows that island's name (and its sky, once reached); the read count stays.
+  stage.onView = (id, state) => {
+    const name = document.getElementById('scene-name');
+    if (!name) return; // a late scroll event after leaving the island page
+    name.textContent = sceneById(id).name;
+    name.parentElement!.dataset.len = String(sceneById(id).name.length);
+    if (state !== 'locked') document.body.dataset.scene = id;
   };
 }
+
+/** HUD text: articles read so far, and toward the next island while there is one. */
+function progress(s: GameState): string {
+  return sceneById(s.currentSceneId).order < SCENES.length ? `已讀 ${s.reads.length} 篇 · 再讀 ${readsGoal(s.currentSceneId) - s.reads.length} 篇到下一座島` : `已讀 ${s.reads.length} 篇`;
+}
+/** Islands not reached yet, with the label drawn over their silhouette. */
+const lockedOf = (s: GameState): [string, string][] => SCENES.filter((sc) => !s.unlockedSceneIds.includes(sc.id))
+  .map((sc) => [sc.id, `讀滿 ${RULES.readsPerScene * (sc.order - 1)} 篇解鎖`]);
 
 // ---------- 選篇 ----------
 async function showBooks(view: HTMLElement, s: GameState, book: BookId): Promise<void> {
@@ -329,7 +341,7 @@ function showCollection(view: HTMLElement, s: GameState): void {
         return c ? `<div class="card${c.maxLevel === 3 ? ' lv3' : ''}${gold ? ' golden' : ''}">${img}<b>${x.name}</b><span>${stars(c.maxLevel)}</span><small>×${c.count}</small></div>`
           : `<div class="card locked">${img}<b>？</b></div>`;
       }).join('')}</div>`).join('')}
-</section>${scenesHtml(s)}`;
+</section>${localPreview ? scenesHtml(s) : ''}`;
   view.querySelectorAll<HTMLButtonElement>('.mine .up').forEach((b) => (b.onclick = async () => {
     b.disabled = true;
     const y = scrollY;
@@ -352,10 +364,10 @@ function showCollection(view: HTMLElement, s: GameState): void {
 // ---------- 場景 ----------
 function scenesHtml(s: GameState): string {
   return `<section class="panel" id="scenes"><h2>場景</h2>
-    <p class="sub">目前的島住滿，就會解鎖下一個場景，所有動物一起搬過去。</p>
+    <p class="sub">每讀滿 ${RULES.readsPerScene} 篇就解鎖下一個場景，所有動物一起搬過去，島上動物數量不限。</p>
     <ol class="scenes">${SCENES.map((sc) => {
       const st = sc.id === s.currentSceneId ? 'current' : s.unlockedSceneIds.includes(sc.id) ? 'done' : 'locked';
-      const label = st === 'current' ? `${s.animals.length}/${sc.capacity} 隻` : st === 'done' ? '回憶島' : `容量 ${sc.capacity}`;
+      const label = st === 'current' ? `${s.animals.length} 隻 · ${progress(s)}` : st === 'done' ? '回憶島' : `讀滿 ${RULES.readsPerScene * (sc.order - 1)} 篇解鎖`;
       return `<li class="${st}" data-id="${sc.id}"><b>${sc.order}. ${sc.name}</b><span>${label}</span></li>`;
     }).join('')}</ol>${localPreview ? '<p class="hint">本機預覽：點任一場景直接切換（正式版沒有這個功能）</p>' : ''}</section>`;
 }
@@ -407,10 +419,10 @@ function playTransition(to: string): void {
 }
 
 // ---------- 賽程 ----------
-/** How far along the 6 islands someone is: finished islands plus the share of the current one filled. */
+/** How far along the 6 islands someone is: finished islands plus the share of reads toward the next one. */
 function racePos(r: Runner): number {
   const sc = SCENES.find((x) => x.id === r.scene) ?? SCENES[0];
-  return (sc.order - 1 + Math.min(1, r.animals / sc.capacity)) / SCENES.length;
+  return (sc.order - 1 + Math.min(1, Math.max(0, r.reads / RULES.readsPerScene - (sc.order - 1)))) / SCENES.length;
 }
 async function showRace(view: HTMLElement, s: GameState): Promise<void> {
   view.innerHTML = '<section class="panel"><p class="loading">載入中…</p></section>';
@@ -420,7 +432,7 @@ async function showRace(view: HTMLElement, s: GameState): Promise<void> {
   list = list.map((r) => (r.id === me?.id ? { ...r, scene: s.currentSceneId, animals: s.animals.length, reads: s.reads.length } : r))
     .sort((a, b) => racePos(b) - racePos(a) || b.reads - a.reads);
   view.innerHTML = `<section class="panel race"><h2>奔跑賽程</h2>
-    <p class="sub">島住滿就往下一座島前進，點名字可以去看他的島</p>
+    <p class="sub">每讀滿 ${RULES.readsPerScene} 篇就往下一座島前進，點名字可以去看他的島</p>
     <div class="race-head">${SCENES.map((sc) => `<span>${sc.name.slice(0, 2)}</span>`).join('')}</div>
     <ol>${list.map((r, i) => `<li class="${r.id === me?.id ? 'me' : ''}"><a href="#/visit/${r.id}">
       <div class="who"><b>${i + 1}</b>${esc(r.nick)}${r.id === me?.id ? '（我）' : ''}<small>${sceneById(r.scene as GameState['currentSceneId'])?.name ?? ''} · ${r.animals} 隻 · 讀 ${r.reads} 篇</small></div>
@@ -457,7 +469,7 @@ async function showVisit(view: HTMLElement, uid: number): Promise<void> {
   const sc = sceneById(v.scene as GameState['currentSceneId']);
   view.innerHTML = `<header class="hud">
       <a href="#/race" class="logo" aria-label="回賽程">${ICON.flag}</a>
-      <h1 data-len="${sc.name.length}"><span>${sc.name}</span><small>${v.animals.length}/${sc.capacity}</small></h1>
+      <h1 data-len="${sc.name.length}"><span>${sc.name}</span><small>${v.animals.length} 隻</small></h1>
       <div class="today"><span>${esc(v.nick)}<br>的島</span></div>
     </header>
     <div class="hud-foot"><a class="pill" href="#/race">${ICON.flag}<span>回賽程</span></a><div class="divider"><i></i></div></div>`;

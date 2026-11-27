@@ -1,6 +1,6 @@
 # 信息島（biblos）
 
-讀信息、答題、孵蛋，讓島上住滿動物。文章來自李常受文集、倪柝聲文集（鼓嶺訓練記錄卷一）、新約總論、新約生命讀經、舊約生命讀經。
+讀信息、答題、孵蛋，讓島上越來越熱鬧。文章來自李常受文集、倪柝聲文集（鼓嶺訓練記錄卷一）、新約總論、新約生命讀經、舊約生命讀經。
 
 原始碼在 `island/`（Vite + TypeScript），用 `tools/deploy-island.sh` build 到 `docs/` 再 push 到 main 發布。信息島的存檔在 `biblos_island`（`supabase/island.sql`）；舊版玩家的發蛋腳本是 `supabase/legacy-eggs.sql`。以下「功能」是舊版「聖經中的鑽石」的說明，`docs/` 已換成信息島。
 

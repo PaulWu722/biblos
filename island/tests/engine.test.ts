@@ -83,7 +83,7 @@ describe('hatching', () => {
   });
 });
 
-describe('xp, level-up, capacity, unlock, golden', () => {
+describe('xp, level-up, unlock, golden', () => {
   const hatchOne = (s: GameState): GameState => {
     let t = s;
     for (let i = 0; i < 3; i++) t = run(t, read(`${t.reads.length}-${i}-${n++}`, 2)).state;
@@ -116,31 +116,33 @@ describe('xp, level-up, capacity, unlock, golden', () => {
     expect(s.animals[0]).not.toHaveProperty('name');
     expect(run(s, { type: 'RENAME_ANIMAL', animalId: 'nope', name: 'x' }).events[0]).toEqual({ type: 'REJECTED', reason: 'BAD_INPUT' });
   });
-  it('scene fills at capacity, unlocks the next, animals carry over', () => {
+  it('reading 60 articles moves to the next island; animals carry over with no limit', () => {
     let s = createInitialState(ctx());
-    const types: string[] = [];
-    for (let i = 0; i < 6; i++) {
-      for (let k = 0; k < 3; k++) s = run(s, read(`q${i}${k}`, 2)).state;
-      const r = run(s, { type: 'HATCH_EGG', eggId: s.eggs.find((e) => !e.hatched)!.id });
-      s = r.state; types.push(...r.events.map((e) => e.type));
-    }
-    expect(types).toContain('SCENE_FULL');
-    expect(types).toContain('SCENE_UNLOCKED');
-    expect(s.currentSceneId).toBe('ark');
-    expect(s.unlockedSceneIds).toEqual(['eden', 'ark']);
-    expect(s.animals).toHaveLength(6);
-    expect(s.animals.every((a) => a.originSceneId === 'eden')).toBe(true);
-    // capacity counts carried-over animals: ark needs only 4 more
-    for (let i = 0; i < 4; i++) s = hatchOne(s);
-    expect(s.animals).toHaveLength(10);
-    expect(s.currentSceneId).toBe('wilderness');
+    for (let i = 0; i < 9; i++) s = hatchOne(s); // 27 reads, 9 animals: still eden, no capacity
+    expect(s.currentSceneId).toBe('eden');
+    expect(s.animals).toHaveLength(9);
+    for (let i = 0; i < 32; i++) s = run(s, read(`m${i}`, 1)).state; // 59 reads
+    expect(s.currentSceneId).toBe('eden');
+    const r = run(s, read('m60', 1));
+    expect(r.events).toContainEqual({ type: 'SCENE_UNLOCKED', from: 'eden', to: 'ark' });
+    expect(r.state.currentSceneId).toBe('ark');
+    expect(r.state.unlockedSceneIds).toEqual(['eden', 'ark']);
+    expect(r.state.animals).toHaveLength(9);
   });
-  it('final scene full does not unlock anything', () => {
+  it('a player with many earlier reads catches up several islands at once', () => {
     let s = createInitialState(ctx());
-    s = { ...s, currentSceneId: 'jerusalem', unlockedSceneIds: ['eden', 'ark', 'wilderness', 'bethlehem', 'galilee', 'jerusalem'] };
-    const fake = Array.from({ length: 29 }, (_, i) => ({ id: `f${i}`, createdAt: '', updatedAt: '', speciesId: 'lion', originSceneId: 'jerusalem' as const, xp: 0, level: 1 as const }));
-    s = { ...s, animals: fake };
-    expect(hatchOne(s).currentSceneId).toBe('jerusalem');
+    s = { ...s, reads: Array.from({ length: 130 }, (_, i) => ({ id: `o${i}`, createdAt: '', updatedAt: '', articleId: `old/${i}`, correct: 1 })) };
+    s = run(s, read('new', 1)).state; // 131 reads: past 60 and 120
+    expect(s.currentSceneId).toBe('wilderness');
+    expect(s.unlockedSceneIds).toEqual(['eden', 'ark', 'wilderness']);
+  });
+  it('the final island does not unlock anything', () => {
+    let s = createInitialState(ctx());
+    s = { ...s, currentSceneId: 'jerusalem', unlockedSceneIds: ['eden', 'ark', 'wilderness', 'bethlehem', 'galilee', 'jerusalem'],
+      reads: Array.from({ length: 400 }, (_, i) => ({ id: `o${i}`, createdAt: '', updatedAt: '', articleId: `old/${i}`, correct: 1 })) };
+    const r = run(s, read('new', 1));
+    expect(r.state.currentSceneId).toBe('jerusalem');
+    expect(r.events.some((e) => e.type === 'SCENE_UNLOCKED')).toBe(false);
   });
   it('golden variant unlocks when all scene species reach Lv3', () => {
     let s = createInitialState(ctx());

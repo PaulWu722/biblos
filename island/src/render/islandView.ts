@@ -62,18 +62,22 @@ interface Sprite {
   /** Dropped off the island: falls to the bottom of the screen ('out'), then drops back in from the top ('in'). */
   fall?: { vy: number; t: number; phase: 'out' | 'in' }; }
 
+/** Where a swipe settled: the game's current island, another unlocked one, or one still locked. */
+export type ViewState = 'current' | 'open' | 'locked';
+
 /**
- * The island drawn straight from the concept art, floating and gently bobbing,
- * with animal sprites wandering on it. Earlier islands sit to the left as grey still
- * "memory islands"; swipe sideways to look at them. Only reads game state; never changes it.
+ * The islands drawn straight from the concept art, one slide each, swiped sideways. Every unlocked
+ * island is in colour, and the one you are looking at is live: floating, with all your animals on it.
+ * Locked islands are black silhouettes with a label. Only reads game state; never changes it.
  */
 export class IslandView {
-  /** Called when the swipe settles on a scene; `current` is false for memory islands. */
-  onView: ((sceneId: string, current: boolean) => void) | null = null;
+  /** Called when the swipe settles on an island. */
+  onView: ((sceneId: string, state: ViewState) => void) | null = null;
   private box = document.createElement('div');
-  private slide = document.createElement('div');
-  private memories: string[] = [];
-  private memoryLayouts = new Map<string, Layout>();
+  /** The game's current island (sceneId is the one being looked at). */
+  private current: string;
+  private built = '';
+  private stillLayouts = new Map<string, Layout>();
   private layout: Layout | null = null;
   private sprites = new Map<string, Sprite>();
   private pending: Animal[] = [];
@@ -82,20 +86,16 @@ export class IslandView {
   private last = 0;
   private reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /** `host` scrolls sideways (CSS scroll-snap does the swiping); one slide per unlocked island. */
-  constructor(private host: HTMLElement, private sceneId = 'eden', unlocked: string[] = [sceneId]) {
+  /** `host` scrolls sideways (CSS scroll-snap does the swiping). `locked`: [sceneId, label] for islands not reached yet. */
+  constructor(private host: HTMLElement, private sceneId = 'eden', unlocked: string[] = [sceneId], locked: [string, string][] = []) {
     this.box.className = 'float-island';
-    this.slide.className = 'slide';
-    this.slide.dataset.scene = sceneId;
-    this.slide.appendChild(this.box);
-    host.appendChild(this.slide);
-    this.setMemories(unlocked.filter((id) => id !== sceneId));
-    host.scrollLeft = host.scrollWidth;
+    this.current = sceneId;
+    this.build(unlocked, locked);
     let settle = 0;
     host.addEventListener('scroll', () => { clearTimeout(settle); settle = window.setTimeout(() => this.reportView(), 80); }, { passive: true });
     void this.load();
     document.addEventListener('visibilitychange', this.onVisibility);
-    this.resize.observe(this.slide);
+    this.resize.observe(host);
   }
 
   private onVisibility = () => (document.hidden ? this.stop() : this.start());
@@ -109,62 +109,80 @@ export class IslandView {
     this.host.innerHTML = '';
   }
 
-  /**
-   * Show the current scene; on a new unlock the old island turns grey and slides off to the left.
-   * `unlocked` lists every unlocked scene in order (the current one last).
-   */
-  setScene(sceneId: string, unlocked: string[] = [sceneId]): void {
-    const memories = unlocked.filter((id) => id !== sceneId);
-    if (sceneId === this.sceneId && memories.join() === this.memories.join()) return;
-    const old = this.sceneId;
-    this.setMemories(memories);
-    if (sceneId === old) return;
-    this.sceneId = sceneId;
-    this.slide.dataset.scene = sceneId;
+  /** Sync with the game: `unlocked` in order, `locked` as in the constructor. On a move it glides to the new island. */
+  setScene(current: string, unlocked: string[] = [current], locked: [string, string][] = []): void {
+    const moved = current !== this.current;
+    this.current = current;
+    this.build(unlocked, locked);
+    if (!moved) return;
+    this.show(current);
+    setTimeout(() => this.host.scrollTo({ left: this.slideOf(current)!.offsetLeft, behavior: this.reduced ? 'instant' : 'smooth' }), 900);
+  }
+
+  /** Back to the game's current island (when the island page opens again). */
+  home(): void {
+    this.show(this.current);
+    this.host.scrollLeft = this.slideOf(this.current)!.offsetLeft;
+  }
+
+  private slideOf = (id: string) => this.host.querySelector<HTMLElement>(`.slide[data-scene="${id}"]`);
+
+  /** One slide per island; rebuilt only when the list or a label changes. The live island moves back in afterwards. */
+  private build(unlocked: string[], locked: [string, string][]): void {
+    const key = JSON.stringify([unlocked, locked]);
+    if (key === this.built) return;
+    this.built = key;
+    this.host.innerHTML = '';
+    for (const [id, label] of [...unlocked.map((id) => [id, ''] as const), ...locked]) {
+      const el = document.createElement('div');
+      el.className = `slide${label ? ' locked' : ''}`;
+      el.dataset.scene = id;
+      el.innerHTML = `<img class="still" src="${base}scenes/${id}/island.png" alt="" draggable="false">${label ? '<p class="lock"></p>' : ''}`;
+      if (label) el.querySelector('.lock')!.textContent = label;
+      this.host.appendChild(el);
+      void loadLayout(id).then((l) => {
+        this.stillLayouts.set(id, l);
+        placeIsland(el.querySelector('.still')!, el, l);
+      }).catch(() => {}); // without its layout the island just keeps the CSS fit
+    }
+    if (!this.slideOf(this.sceneId)) this.sceneId = this.current;
+    const live = this.slideOf(this.sceneId)!;
+    live.classList.add('live');
+    live.appendChild(this.box);
+    this.host.scrollLeft = live.offsetLeft;
+  }
+
+  /** Move the live island (art, water, animals) to another unlocked island. */
+  private show(id: string): void {
+    if (id === this.sceneId) return;
+    this.slideOf(this.sceneId)?.classList.remove('live');
+    this.sceneId = id;
+    const slide = this.slideOf(id)!;
+    slide.classList.add('live');
+    slide.appendChild(this.box);
     this.stop();
     this.layout = null;
     this.sprites.clear();
     this.box.innerHTML = '';
     void this.load();
-    // Start on the old island (still in colour), fade it to grey, then glide to the new one.
-    const oldSlide = this.host.querySelector<HTMLElement>(`.slide.memory[data-scene="${old}"]`);
-    if (!oldSlide) return;
-    oldSlide.classList.add('fresh');
-    this.host.scrollTo({ left: oldSlide.offsetLeft, behavior: 'instant' });
-    requestAnimationFrame(() => oldSlide.classList.remove('fresh'));
-    setTimeout(() => this.host.scrollTo({ left: this.slide.offsetLeft, behavior: this.reduced ? 'instant' : 'smooth' }), 900);
   }
 
   private fit(): void {
-    if (this.layout) placeIsland(this.box, this.slide, this.layout);
-    this.host.querySelectorAll<HTMLElement>('.slide.memory').forEach((el) => {
-      const img = el.querySelector<HTMLElement>('.plate'), l = this.memoryLayouts.get(el.dataset.scene!);
+    if (this.layout && this.box.parentElement) placeIsland(this.box, this.box.parentElement, this.layout);
+    this.host.querySelectorAll<HTMLElement>('.slide').forEach((el) => {
+      const img = el.querySelector<HTMLElement>('.still'), l = this.stillLayouts.get(el.dataset.scene!);
       if (img && l) placeIsland(img, el, l);
     });
-  }
-
-  private setMemories(ids: string[]): void {
-    if (ids.join() === this.memories.join()) return;
-    this.memories = ids;
-    this.host.querySelectorAll('.slide.memory').forEach((el) => el.remove());
-    for (const id of ids) {
-      const el = document.createElement('div');
-      el.className = 'slide memory';
-      el.dataset.scene = id;
-      el.innerHTML = `<img class="plate" src="${base}scenes/${id}/island.png" alt="" draggable="false">`;
-      this.host.insertBefore(el, this.slide);
-      void loadLayout(id).then((l) => {
-        this.memoryLayouts.set(id, l);
-        placeIsland(el.querySelector('.plate')!, el, l);
-      }).catch(() => {}); // without its layout the memory just keeps the CSS fit
-    }
   }
 
   private reportView(): void {
     const slides = [...this.host.querySelectorAll<HTMLElement>('.slide')];
     const i = Math.round(this.host.scrollLeft / Math.max(1, this.host.clientWidth));
     const el = slides[Math.min(Math.max(i, 0), slides.length - 1)];
-    if (el) this.onView?.(el.dataset.scene!, el === this.slide);
+    if (!el) return;
+    const id = el.dataset.scene!, state: ViewState = el.classList.contains('locked') ? 'locked' : id === this.current ? 'current' : 'open';
+    if (state !== 'locked') this.show(id);
+    this.onView?.(id, state);
   }
 
   private async load(): Promise<void> {

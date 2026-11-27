@@ -42,8 +42,8 @@ export const todayReadCount = (s: GameState, now: Date): number => {
   const start = gameDayStart(now);
   return s.reads.filter((r) => new Date(r.createdAt).getTime() >= start).length;
 };
-export const sceneFull = (s: GameState): boolean =>
-  s.animals.length >= sceneById(s.currentSceneId).capacity;
+/** Total reads needed to leave this scene for the next one. */
+export const readsGoal = (sceneId: SceneId): number => RULES.readsPerScene * sceneById(sceneId).order;
 
 /** Pick species for a hatched egg. Legendary = current scene's signature; others 80% new / 20% old. */
 export function pickSpecies(tier: EggTier, scene: SceneId, rng: () => number): string {
@@ -107,6 +107,13 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
       events.push({ type: 'EGG_EARNED', egg });
     }
     s = { ...s, reads: [...s.reads, read], pendingBatch: batch, eggs, xp: s.xp + RULES.xpPerArticle + RULES.xpPerCorrect * correct };
+    // Loop: a player with many reads from before this rule catches up several islands at once.
+    for (let next = SCENES.find((x) => x.order === sceneById(s.currentSceneId).order + 1);
+      next && s.reads.length >= readsGoal(s.currentSceneId);
+      next = SCENES.find((x) => x.order === next!.order + 1)) {
+      events.push({ type: 'SCENE_UNLOCKED', from: s.currentSceneId, to: next.id });
+      s = { ...s, currentSceneId: next.id, unlockedSceneIds: [...s.unlockedSceneIds, next.id] };
+    }
     return { state: s, events };
   }
 
@@ -123,14 +130,6 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
     s = { ...s, eggs: s.eggs.map((e) => (e.id === egg.id ? hatched : e)), animals: [...s.animals, animal] };
     events.push({ type: 'EGG_HATCHED', egg: hatched, animal });
     s = updateCollectionAndGolden(s, ctx, events);
-    if (sceneFull(s)) {
-      events.push({ type: 'SCENE_FULL', sceneId: s.currentSceneId });
-      const next = SCENES.find((x) => x.order === sceneById(s.currentSceneId).order + 1);
-      if (next) {
-        events.push({ type: 'SCENE_UNLOCKED', from: s.currentSceneId, to: next.id });
-        s = { ...s, currentSceneId: next.id, unlockedSceneIds: [...s.unlockedSceneIds, next.id] };
-      }
-    }
     return { state: s, events };
   }
 

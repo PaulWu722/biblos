@@ -36,7 +36,6 @@ export type GameEvent =
   | { type: 'EGG_EARNED'; egg: Egg }
   | { type: 'EGG_HATCHED'; egg: Egg; animal: Animal }
   | { type: 'LEVEL_UP'; animalId: string; level: 2 | 3 }
-  | { type: 'SCENE_FULL'; sceneId: SceneId }
   | { type: 'SCENE_UNLOCKED'; from: SceneId; to: SceneId }
   | { type: 'GOLDEN_UNLOCKED'; sceneId: SceneId }
   | { type: 'REJECTED'; reason: 'DUPLICATE_ARTICLE' | 'NOT_SCROLLED' | 'BAD_INPUT' | 'NO_EGG' | 'MAX_LEVEL' | 'NOT_ENOUGH_XP' };
