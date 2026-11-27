@@ -109,6 +109,8 @@ button.egg-big { cursor: pointer; }
 .mine em { font-style: normal; color: var(--line); font-size: 14px; }
 .mine .up { display: flex; flex-direction: column; align-items: center; line-height: 1.2; padding: 6px 14px; border-radius: 12px; background: var(--moss); color: #fff; font-weight: 600; }
 .mine .up small { font-weight: 400; font-size: 12px; opacity: .9; }
+.mine .rename { padding: 6px 10px; border-radius: 12px; border: 1px solid #E5DCC4; color: var(--soft); font-size: 14px; }
+.mine b small { font-weight: 400; font-size: 13px; color: var(--soft); }
 .mine .up:disabled { background: #E5DCC4; color: #9A8E70; cursor: default; }
 h3 small b { color: var(--line); }
 .hud .today b { font-size: 20px; color: #3E4A3A; }
@@ -131,7 +133,24 @@ h3 small b { color: var(--line); }
 .float-island .shadow { position: absolute; left: 30%; right: 30%; bottom: -7%; height: 4%; border-radius: 50%; background: radial-gradient(rgba(80, 80, 120, .22), transparent 70%); animation: float-shadow 6s ease-in-out infinite; }
 @keyframes float { 50% { transform: translateY(-12px); } }
 @keyframes float-shadow { 50% { transform: scaleX(.85); opacity: .6; } }
-.critter { position: absolute; transform: translate(-50%, -100%) translateY(var(--hop, 0)); pointer-events: none; }
+.critter { position: absolute; transform: translate(-50%, -100%) translateY(var(--hop, 0)); touch-action: none; cursor: grab; }
+.critter.still { pointer-events: none; }
+.critter.held { cursor: grabbing; z-index: 99999 !important; }
+.critter .name { position: absolute; left: 50%; bottom: 100%; translate: -50% -4px; white-space: nowrap; padding: 0 7px; border-radius: 99px; background: rgba(255, 253, 247, .85); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.5; pointer-events: none; }
+.critter .name:empty { display: none; }
+.critter .shout, .critter .cry { display: none; position: absolute; pointer-events: none; font-style: normal; font-weight: 800; color: #D9534F; text-shadow: 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; }
+.critter .shout { left: -6%; top: -30%; font-size: 26px; animation: shout .3s ease-in-out infinite alternate; }
+.critter .cry { left: 85%; top: 0; font-size: 16px; }
+.critter.falling .shout, .critter.falling .cry { display: block; }
+.critter.falling .name { display: none; }
+.critter { -webkit-touch-callout: none; user-select: none; }
+.critter .aim { position: absolute; left: 50%; top: 92%; width: 0; height: 4px; margin-top: -2px; transform-origin: 0 50%; pointer-events: none; border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #E0A82E 0 8px, transparent 8px 13px); }
+.critter .aim::after { content: ""; position: absolute; right: -8px; top: 50%; translate: 0 -50%; border: 7px solid transparent; border-left: 10px solid #E0A82E; border-right: 0; }
+.critter:not(.aiming) .aim { display: none; }
+.critter.aiming img { animation: tremble .12s linear infinite alternate; }
+@keyframes tremble { from { translate: -1px 0; } to { translate: 1px 0; } }
+@keyframes shout { to { transform: rotate(-12deg) scale(1.2); } }
 .critter img { height: 100%; display: block; user-select: none; }
 .critter.flip img { transform: scaleX(-1); }
 .critter .halo { display: none; position: absolute; left: 50%; top: -12%; width: 38%; aspect-ratio: 3 / 1; transform: translateX(-50%); border: 2px solid #E9C46A; border-radius: 50%; box-shadow: 0 0 6px rgba(233, 196, 106, .7); }

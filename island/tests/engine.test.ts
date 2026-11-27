@@ -107,6 +107,15 @@ describe('xp, level-up, capacity, unlock, golden', () => {
     expect(r.state.collection.deer!.maxLevel).toBe(3);
     expect(run(r.state, { type: 'LEVEL_UP_ANIMAL', animalId: id }).events[0]).toEqual({ type: 'REJECTED', reason: 'MAX_LEVEL' });
   });
+  it('names an animal, trimmed to 8 characters; empty clears it', () => {
+    let s = createInitialState(ctx());
+    s = { ...s, animals: [{ id: 'n1', createdAt: '', updatedAt: '', speciesId: 'rabbit', originSceneId: 'eden', xp: 0, level: 1 }] };
+    s = run(s, { type: 'RENAME_ANIMAL', animalId: 'n1', name: '  小白兔兔兔兔兔兔兔  ' }).state;
+    expect(s.animals[0]!.name).toBe('小白兔兔兔兔兔兔');
+    s = run(s, { type: 'RENAME_ANIMAL', animalId: 'n1', name: ' ' }).state;
+    expect(s.animals[0]).not.toHaveProperty('name');
+    expect(run(s, { type: 'RENAME_ANIMAL', animalId: 'nope', name: 'x' }).events[0]).toEqual({ type: 'REJECTED', reason: 'BAD_INPUT' });
+  });
   it('scene fills at capacity, unlocks the next, animals carry over', () => {
     let s = createInitialState(ctx());
     const types: string[] = [];

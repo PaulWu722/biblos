@@ -56,7 +56,11 @@ function placeIsland(el: HTMLElement, slide: HTMLElement, layout: Layout): void 
 interface Sprite {
   el: HTMLElement; species: string; home: string; right: boolean;
   /** Lv3 height in the current island.png's pixels. */
-  height: number; level: 1 | 2 | 3; golden: boolean; x: number; y: number; tx: number; ty: number; idle: number; mode: Mode; }
+  height: number; level: 1 | 2 | 3; golden: boolean; x: number; y: number; tx: number; ty: number; idle: number; mode: Mode;
+  /** Sprinting in a straight line (tapped or bumped), bouncing off the island's edge. */
+  dash?: { vx: number; vy: number; t: number }; held?: boolean;
+  /** Dropped off the island: falls to the bottom of the screen ('out'), then drops back in from the top ('in'). */
+  fall?: { vy: number; t: number; phase: 'out' | 'in' }; }
 
 /**
  * The island drawn straight from the concept art, floating and gently bobbing,
@@ -197,7 +201,7 @@ export class IslandView {
     for (const [id, s] of this.sprites) if (!keep.has(id)) { s.el.remove(); this.sprites.delete(id); }
     for (const a of animals) {
       const cur = this.sprites.get(a.id);
-      if (cur) { if (cur.level !== a.level || cur.golden !== golden.includes(cur.home)) { cur.golden = golden.includes(cur.home); this.applyLevel(cur, a.level); } continue; }
+      if (cur) { cur.el.querySelector('.name')!.textContent = a.name ?? ''; if (cur.level !== a.level || cur.golden !== golden.includes(cur.home)) { cur.golden = golden.includes(cur.home); this.applyLevel(cur, a.level); } continue; }
       const mode = MODE[a.speciesId] ?? 'walk';
       const [x, y] = this.pick(mode);
       const el = document.createElement('div');
@@ -205,10 +209,13 @@ export class IslandView {
       el.style.setProperty('--d', `${-Math.random() * 3.2}s`); // dancers out of step with each other
       // Sprites live with the species' home scene, so animals carried over from earlier islands still show.
       const home = speciesById(a.speciesId).scene;
-      el.innerHTML = `<img alt="" draggable="false"><i class="rays"></i><i class="halo"></i><i class="note" aria-hidden="true">♪</i>`;
+      el.innerHTML = `<b class="name"></b><i class="shout" aria-hidden="true">！</i><i class="cry" aria-hidden="true">啊～～</i><i class="aim" aria-hidden="true"></i><img alt="" draggable="false"><i class="rays"></i><i class="halo"></i><i class="note" aria-hidden="true">♪</i>`;
       const s: Sprite = { el, species: a.speciesId, home, right: false, height: this.layout.animalHeight, level: a.level, golden: golden.includes(home), x, y, tx: x, ty: y, idle: mode === 'still' ? Infinity : Math.random() * 2, mode };
       this.applyLevel(s, a.level);
+      el.querySelector('.name')!.textContent = a.name ?? ''; // textContent: visited islands' names are other players' text
       void this.useHomeLayout(s);
+      el.addEventListener('pointerdown', (e) => this.grab(s, e));
+      el.addEventListener('contextmenu', (e) => e.preventDefault()); // long-press on phones would open the image menu
       bob.appendChild(el);
       this.sprites.set(a.id, s);
       this.place(s, 0);
@@ -237,6 +244,103 @@ export class IslandView {
     s.el.classList.toggle('lv3', level === 3);
   }
 
+  /** Island.png coordinates under a pointer (the plate's rect already includes the bobbing). */
+  private toIsland(e: PointerEvent): [number, number] {
+    const r = this.box.querySelector('.plate')!.getBoundingClientRect(), { width, height } = this.layout!;
+    return [((e.clientX - r.left) / r.width) * width, ((e.clientY - r.top) / r.height) * height];
+  }
+
+  /**
+   * Tap: sprint. Drag right away: carry it; let go off the island and it falls away, then drops back on from above.
+   * Hold still for a moment, then pull: a slingshot; let go and it sprints the opposite way, farther the more you pulled.
+   */
+  private grab(s: Sprite, e: PointerEvent): void {
+    if (!this.layout || s.mode === 'still' || s.fall || s.held) return;
+    e.preventDefault();
+    const el = s.el, [px, py] = this.toIsland(e), ox = s.x - px, oy = s.y - py, aim = el.querySelector<HTMLElement>('.aim')!;
+    el.setPointerCapture(e.pointerId);
+    let mode: 'tap' | 'carry' | 'sling' = 'tap', pull = [0, 0];
+    const hold = setTimeout(() => { mode = 'sling'; s.held = true; el.classList.add('aiming'); el.classList.remove('idle'); }, 300);
+    const move = (m: PointerEvent) => {
+      const dx = m.clientX - e.clientX, dy = m.clientY - e.clientY, d = Math.hypot(dx, dy);
+      if (mode === 'sling') {
+        pull = [dx, dy];
+        const len = Math.min(d, 140); // shown arrow points where it will go: away from the pull
+        aim.style.width = `${len}px`; aim.style.rotate = `${Math.atan2(-dy, -dx)}rad`; aim.style.opacity = d < 10 ? '0' : '1';
+        if (Math.abs(dx) > 4) el.classList.toggle('flip', -dx > 0 !== s.right);
+        return;
+      }
+      if (mode === 'tap' && d < 8) return;
+      clearTimeout(hold);
+      mode = 'carry'; s.held = true; el.classList.add('held'); el.classList.remove('idle');
+      const [x, y] = this.toIsland(m); s.x = x + ox; s.y = y + oy; this.place(s, 0);
+    };
+    const up = (u: PointerEvent) => {
+      clearTimeout(hold);
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+      el.classList.remove('held', 'aiming'); s.held = false; aim.style.width = '0';
+      if (mode === 'sling') {
+        const d = Math.hypot(pull[0], pull[1]);
+        if (u.type === 'pointerup' && d >= 10) this.startDash(s, -pull[0], -pull[1], 0.3 + Math.min(d, 140) / 140); // screen and island axes point the same way
+        else { s.tx = s.x; s.ty = s.y; s.idle = 1; }
+        return;
+      }
+      if (mode === 'tap') { if (u.type === 'pointerup') { const a = Math.random() * Math.PI * 2; this.startDash(s, Math.cos(a), Math.sin(a)); } return; }
+      if (!this.offIsland(s.x, s.y)) { s.tx = s.x; s.ty = s.y; s.idle = 1; return; }
+      if (this.reduced) { [s.x, s.y] = this.pick(s.mode); s.tx = s.x; s.ty = s.y; this.place(s, 0); return; }
+      s.fall = { vy: 0, t: 0, phase: 'out' }; el.classList.add('falling');
+    };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+
+  /** Off the island: outside its body box, or far from every spot an animal can stand, swim or fly. */
+  private offIsland(x: number, y: number): boolean {
+    const l = this.layout!, [bx0, by0, bx1, by1] = l.body ?? [0, 0, l.width, l.height];
+    if (x < bx0 || x > bx1 || y < by0 - l.animalHeight || y > by1) return true;
+    const pts = [...l.walk, ...(l.swim ?? []), ...l.sky];
+    return Math.min(...pts.map(([px, py]) => Math.hypot(px - x, py - y))) > bodyWidth(l) * 0.15;
+  }
+
+  /** Falling: down past the bottom of the screen, then from above the top of the screen back onto a random spot. */
+  private fallStep(s: Sprite, dt: number): void {
+    const f = s.fall!, { height } = this.layout!;
+    f.vy += height * 2.5 * dt; f.t += dt; s.y += f.vy * dt;
+    if (f.phase === 'out') {
+      const host = this.host.getBoundingClientRect(), r = s.el.getBoundingClientRect();
+      if (r.top > host.bottom || f.t > 4) { // 4 s: safety net if the page is hidden mid-fall
+        const plate = this.box.querySelector('.plate')!.getBoundingClientRect(), k = plate.height / height;
+        [s.tx, s.ty] = this.pick(s.mode); s.x = s.tx; s.y = (host.top - plate.top) / k; // feet at the top edge, body above it
+        s.fall = { vy: 0, t: 0, phase: 'in' };
+      }
+    } else if (s.y >= s.ty) { s.y = s.ty; s.fall = undefined; s.idle = 1 + Math.random() * 2; s.el.classList.remove('falling'); s.el.classList.add('idle'); }
+    this.place(s, 0);
+  }
+
+  /** Sprint along (dx, dy) for a moment; 20× walking speed. */
+  private startDash(s: Sprite, dx: number, dy: number, t = 0.7): void {
+    const v = this.layout!.width * 0.035 * 20, n = Math.hypot(dx, dy) || 1;
+    s.dash = { vx: (dx / n) * v, vy: (dy / n) * v, t }; s.idle = 0; s.el.classList.remove('idle');
+  }
+
+  /** One frame of a sprint: bounce off the island's edge, and set off any animal it runs into. */
+  private dashStep(s: Sprite, dt: number, now: number): void {
+    const d = s.dash!, nx = s.x + d.vx * dt, ny = s.y + d.vy * dt;
+    if (!this.offIsland(nx, ny)) { s.x = nx; s.y = ny; }
+    else if (!this.offIsland(s.x - d.vx * dt, ny)) { d.vx = -d.vx; s.x += d.vx * dt; s.y = ny; }
+    else if (!this.offIsland(nx, s.y - d.vy * dt)) { d.vy = -d.vy; s.x = nx; s.y += d.vy * dt; }
+    else { d.vx = -d.vx; d.vy = -d.vy; }
+    if (Math.abs(d.vx) > 1) s.el.classList.toggle('flip', d.vx > 0 !== s.right);
+    const reach = s.height * LEVEL_SCALE[s.level] * 0.45;
+    for (const o of this.sprites.values()) {
+      if (o === s || o.dash || o.fall || o.held || o.mode === 'still') continue;
+      const ox = o.x - s.x, oy = o.y - s.y;
+      if (Math.hypot(ox, oy) < reach) this.startDash(o, ox || d.vx, oy || d.vy);
+    }
+    d.t -= dt;
+    if (d.t <= 0) { s.dash = undefined; s.tx = s.x; s.ty = s.y; s.idle = 1.5 + Math.random() * 2; s.el.classList.add('idle'); }
+    this.place(s, s.mode === 'fly' ? Math.sin(now / 400) * 3 : s.mode === 'swim' ? 0 : Math.abs(Math.sin(now / 60)) * 5);
+  }
+
   private pick(mode: Mode): [number, number] {
     const { sky, swim, walk } = this.layout!;
     const pts = mode === 'fly' && sky.length ? sky : mode === 'swim' && swim?.length ? swim : walk;
@@ -258,6 +362,9 @@ export class IslandView {
     if (this.reduced || !this.layout) return;
     const speed = this.layout.width * 0.035; // px of island.png per second
     for (const s of this.sprites.values()) {
+      if (s.held) continue;
+      if (s.fall) { this.fallStep(s, dt); continue; }
+      if (s.dash) { this.dashStep(s, dt, now); continue; }
       if (s.idle > 0) {
         s.idle -= dt;
         if (s.idle <= 0) { [s.tx, s.ty] = this.pick(s.mode); s.el.classList.remove('idle'); }

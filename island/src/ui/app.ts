@@ -316,7 +316,8 @@ function showCollection(view: HTMLElement, s: GameState): void {
     <h3 id="mine">我的動物 <small>可用經驗值 <b>${s.xp}</b></small></h3>
     <ul class="mine">${s.animals.map((a) => {
       const cost = upgradeCost(a);
-      return `<li><img alt="" loading="lazy" src="${spriteFor(a.speciesId, a.level)}"><div><b>${speciesById(a.speciesId).name}</b><span>Lv${a.level} ${LEVEL_NAME[a.level]}</span></div>
+      return `<li><img alt="" loading="lazy" src="${spriteFor(a.speciesId, a.level)}"><div><b>${a.name ? `${esc(a.name)} <small>${speciesById(a.speciesId).name}</small>` : speciesById(a.speciesId).name}</b><span>Lv${a.level} ${LEVEL_NAME[a.level]}</span></div>
+        <button class="rename" data-id="${a.id}">${a.name ? '改名' : '取名'}</button>
         ${a.level === 3 ? '<em>已成熟</em>' : `<button class="up" data-id="${a.id}" ${s.xp < cost ? 'disabled' : ''}>升級<small>${cost} 經驗</small></button>`}</li>`;
     }).join('') || '<li class="empty">還沒有動物</li>'}</ul>
     <h3>收集 <small>${Object.keys(s.collection).length} / ${SPECIES.length} 種</small></h3>
@@ -333,6 +334,15 @@ function showCollection(view: HTMLElement, s: GameState): void {
     b.disabled = true;
     const y = scrollY;
     try { await store!.act({ type: 'LEVEL_UP_ANIMAL', animalId: b.dataset.id! }); } catch { toast('存檔失敗，請檢查網路'); }
+    showCollection(view, store!.state);
+    scrollTo(0, y);
+  }));
+  view.querySelectorAll<HTMLButtonElement>('.mine .rename').forEach((b) => (b.onclick = async () => {
+    const a = store!.state.animals.find((x) => x.id === b.dataset.id);
+    const name = prompt('幫牠取個名字（最多 8 個字，留空就取消名字）', a?.name ?? '');
+    if (name === null) return;
+    const y = scrollY;
+    try { await store!.act({ type: 'RENAME_ANIMAL', animalId: b.dataset.id!, name }); } catch { toast('存檔失敗，請檢查網路'); }
     showCollection(view, store!.state);
     scrollTo(0, y);
   }));

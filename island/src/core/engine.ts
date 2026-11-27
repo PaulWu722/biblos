@@ -146,5 +146,12 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
     s = { ...s, xp: s.xp - cost, animals: s.animals.map((x) => (x.id === a.id ? up : x)) };
     return { state: updateCollectionAndGolden(s, ctx, events), events };
   }
+  if (action.type === 'RENAME_ANIMAL') {
+    const a = s.animals.find((x) => x.id === action.animalId);
+    if (!a || typeof action.name !== 'string') return reject('BAD_INPUT');
+    const { name: _, ...rest } = a, name = [...action.name.trim()].slice(0, 8).join(''); // 8 characters fit over a small sprite
+    const renamed = { ...rest, ...(name ? { name } : {}), updatedAt: stamp(ctx) };
+    return { state: { ...s, animals: s.animals.map((x) => (x.id === a.id ? renamed : x)) }, events };
+  }
   return reject('BAD_INPUT');
 }
