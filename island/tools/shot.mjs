@@ -2,7 +2,7 @@
 // Needs the dev server: npm run dev -- --port 5173. Usage: node tools/shot.mjs out.png [sceneId]
 import { chromium } from '@playwright/test';
 const [out = 'shot.png', scene = 'eden'] = process.argv.slice(2);
-const species = { eden: ['rabbit', 'sheep', 'deer', 'dove'], ark: ['elephant', 'giraffe', 'zebra', 'raven'], wilderness: ['camel', 'donkey', 'quail'], bethlehem: ['lamb', 'sheepdog', 'ox', 'donkeyBlue'], galilee: ['fish', 'seagull', 'sheepCream', 'sparrow'], jerusalem: ['lion', 'lambGlow', 'leopard', 'eagle'] }[scene] ?? [];
+const species = { eden: ['rabbit', 'sheep', 'deer', 'dove'], ark: ['elephant', 'giraffe', 'zebra', 'raven'], wilderness: ['camel', 'donkey', 'quail', 'ibex'], bethlehem: ['lamb', 'sheepdog', 'ox', 'donkeyBlue'], galilee: ['fish', 'seagull', 'sheepCream', 'sparrow'], jerusalem: ['lion', 'lambGlow', 'leopard', 'eagle'] }[scene] ?? [];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 await page.addInitScript(([scene, species, order]) => {

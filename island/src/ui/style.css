@@ -82,13 +82,17 @@ body[data-page="island"] { background: linear-gradient(#C9C6EE, #D2E6EF 38%, #F6
 .result { text-align: center; }
 .result .big { font-size: 20px; font-weight: 700; }
 .egg-row { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin-top: 18px; }
-.egg-big { display: block; width: 72px; height: 92px; margin: 14px auto; border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%; background: #FAF6EC; box-shadow: inset -6px -8px 0 rgba(0,0,0,.06), 0 4px 10px rgba(74,66,50,.15); }
-.egg-big.rare { background: #CFE6F6; }
-.egg-big.precious { background: linear-gradient(135deg, #E6DAF6, #C9B8E8); }
-.egg-big.legendary { background: linear-gradient(135deg, #F6E3A8, var(--gold)); box-shadow: 0 0 18px var(--gold); }
+.egg-big { position: relative; display: block; width: 76px; height: 98px; margin: 14px auto; padding: 0; border: 0; background: none; }
+button.egg-big { cursor: pointer; }
+.egg-big .shell { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: transform .6s cubic-bezier(.2,.8,.3,1), opacity .6s; }
+.egg-big .top { clip-path: polygon(0 0, 100% 0, 100% 52%, 85% 46%, 70% 55%, 55% 45%, 40% 56%, 25% 46%, 12% 54%, 0 47%); }
+.egg-big .bot { clip-path: polygon(0 47%, 12% 54%, 25% 46%, 40% 56%, 55% 45%, 70% 55%, 85% 46%, 100% 52%, 100% 100%, 0 100%); }
+.egg-big.crack .top { transform: translate(-14px, -46px) rotate(-28deg); opacity: 0; }
+.egg-big.crack .bot { transform: translate(6px, 18px) rotate(10deg); opacity: 0; }
+.egg-big.legendary { filter: drop-shadow(0 0 10px rgba(240, 196, 80, .8)); }
 .shake { animation: shake .4s ease-in-out 3; }
 @keyframes shake { 25% { transform: rotate(-10deg); } 75% { transform: rotate(10deg); } }
-.burst { width: 120px; height: 120px; margin: 0 auto 8px; border-radius: 50%; background: radial-gradient(#fff, rgba(233,196,106,.6) 40%, transparent 70%); animation: burst .8s ease-out; }
+.burst { display: flex; align-items: flex-end; justify-content: center; width: 150px; height: 150px; margin: 0 auto 8px; border-radius: 50%; background: radial-gradient(#fff, rgba(233,196,106,.6) 40%, transparent 70%); animation: burst .8s ease-out; }
 @keyframes burst { from { transform: scale(.2); opacity: 0; } }
 
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -125,7 +129,7 @@ body[data-page="island"] { background: linear-gradient(#C9C6EE, #D2E6EF 38%, #F6
 .critter .halo { display: none; position: absolute; left: 50%; top: -12%; width: 38%; aspect-ratio: 3 / 1; transform: translateX(-50%); border: 2px solid #E9C46A; border-radius: 50%; box-shadow: 0 0 6px rgba(233, 196, 106, .7); }
 .critter.lv3 .halo { display: block; }
 @media (prefers-reduced-motion: reduce) { .float-island .bob, .float-island .shadow { animation: none; } }
-/* Water flow and swaying plants on the island art. */
+/* Water ripples on the island art (masked by each scene's water-mask.png). */
 .float-island .water { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .35;
   -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat; overflow: hidden; }
 /* Two soft ripple layers drifting in different directions read as moving water, not stripes. */
@@ -144,9 +148,7 @@ body[data-page="island"] { background: linear-gradient(#C9C6EE, #D2E6EF 38%, #F6
   background-size: 54px 36px, 54px 36px, 100% 28px; animation: ripple-b 5s linear infinite; }
 @keyframes ripple-a { from { transform: translate(0, 0); } to { transform: translate(70px, 44px); } }
 @keyframes ripple-b { 0% { transform: translate(0, 0); opacity: .6; } 50% { opacity: 1; } 100% { transform: translate(-54px, 36px); opacity: .6; } }
-.float-island .sway { position: absolute; pointer-events: none; transform-origin: 50% 92%; animation: sway 3.6s ease-in-out infinite alternate; }
-@keyframes sway { from { transform: rotate(-3deg) skewX(2deg); } to { transform: rotate(3deg) skewX(-2deg); } }
-@media (prefers-reduced-motion: reduce) { .float-island .water::before, .float-island .water::after, .float-island .sway { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .float-island .water::before, .float-island .water::after { animation: none; } }
 /* Subtle water flow: soft light streaks drifting over the water, clipped by masks made with tools/water-mask.py. */
 .flow { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .2;
   -webkit-mask: var(--mask) center / 100% 100% no-repeat; mask: var(--mask) center / 100% 100% no-repeat; }
@@ -193,3 +195,59 @@ body[data-page="island"][data-scene="jerusalem"] { background: linear-gradient(#
 @keyframes glow { 50% { opacity: .55; transform: scale(.9); } }
 @media (prefers-reduced-motion: reduce) { .float-island .fire img, .float-island .fire .glow { animation: none; } }
 .stage .slide { position: relative; }
+/* Lv3 must read as clearly "grown up": brighter halo, a warm golden aura and twinkling sparkles. */
+.critter.lv3 .halo { border-width: 3px; box-shadow: 0 0 8px 2px rgba(255, 214, 110, .9); }
+.critter.lv3::before { content: ""; position: absolute; left: -35%; right: -35%; top: -20%; bottom: -10%; z-index: -1; border-radius: 50%;
+  background: radial-gradient(rgba(255, 221, 130, .55), rgba(255, 210, 110, .18) 45%, transparent 70%); animation: aura 2.4s ease-in-out infinite; }
+.critter.lv3::after { content: ""; position: absolute; left: -25%; right: -25%; top: -15%; bottom: 10%; pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 30%, #fff 0 1.5px, rgba(255, 220, 120, .8) 2.5px, transparent 4px),
+    radial-gradient(circle at 88% 22%, #fff 0 1.5px, rgba(255, 220, 120, .8) 2.5px, transparent 4px),
+    radial-gradient(circle at 78% 70%, #fff 0 1px, rgba(255, 220, 120, .8) 2px, transparent 3.5px),
+    radial-gradient(circle at 24% 78%, #fff 0 1px, rgba(255, 220, 120, .8) 2px, transparent 3.5px);
+  animation: twinkle 1.8s ease-in-out infinite; }
+@keyframes aura { 50% { opacity: .55; transform: scale(.92); } }
+@keyframes twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .critter.lv3::before, .critter.lv3::after { animation: none; } }
+/* Collection cards: the animal at its best level; uncollected species are a dark silhouette. */
+.card img { height: 64px; width: 100%; object-fit: contain; margin-bottom: 4px; }
+.card.locked { opacity: 1; }
+.card.locked img { filter: brightness(0); opacity: .18; }
+.card.lv3:not(.golden) img { filter: drop-shadow(0 0 6px rgba(255, 210, 100, .95)); }
+.card.golden { background: linear-gradient(160deg, #FFF3C4, #F3D77E); }
+.card.golden span { color: #9A6B10; }
+.burst img { height: 82%; max-width: 100%; object-fit: contain; animation: pop .6s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } }
+/* Golden animals dance like a person while standing: sway, hop, rear up, turn around, shimmy. Uses the
+   individual translate/rotate/scale properties so the walking flip (transform: scaleX(-1)) still applies. */
+.critter.golden.idle img { transform-origin: 50% 100%; animation: dance 3.2s ease-in-out infinite var(--d, 0s); }
+@keyframes dance {
+  0%, 100% { translate: 0 0; rotate: 0deg; scale: 1 1; }
+  8% { translate: -4% -9%; rotate: -14deg; }
+  16% { translate: 0 0; rotate: 0deg; scale: 1.08 .9; }
+  24% { translate: 4% -9%; rotate: 14deg; scale: 1 1; }
+  32% { translate: 0 0; rotate: 0deg; scale: 1.08 .9; }
+  44% { translate: 0 -12%; rotate: -20deg; scale: .94 1.1; }
+  56% { translate: 0 -18%; rotate: 0deg; scale: -1 1.05; }
+  66% { translate: 0 0; rotate: 0deg; scale: 1.06 .92; }
+  74% { rotate: 9deg; scale: 1 1; }
+  80% { rotate: -9deg; }
+  86% { rotate: 9deg; }
+  92% { rotate: -9deg; }
+}
+.critter .note { display: none; position: absolute; right: -10%; top: -6%; color: #E0A82E; font: 700 18px/1 serif; font-style: normal; text-shadow: 0 0 4px #fff; }
+.critter.golden.idle .note { display: block; animation: note 1.6s ease-out infinite var(--d, 0s); }
+@keyframes note { from { opacity: 0; translate: 0 30%; rotate: -15deg; } 30% { opacity: 1; } to { opacity: 0; translate: 40% -120%; rotate: 15deg; } }
+@media (prefers-reduced-motion: reduce) { .critter.golden.idle img, .critter.golden.idle .note { animation: none; } }
+/* Golden mode: dazzling rainbow-tinted rays radiating out from behind the animal, slowly turning and pulsing. */
+.rays { display: none; position: absolute; left: 50%; top: 55%; width: 240%; aspect-ratio: 1; z-index: -1; pointer-events: none; translate: -50% -50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 236, 150, .95) 0 5deg, transparent 5deg 15deg, rgba(255, 170, 210, .8) 15deg 19deg, transparent 19deg 30deg, rgba(160, 225, 255, .85) 30deg 34deg, transparent 34deg 45deg);
+  -webkit-mask: radial-gradient(circle, transparent 12%, #000 22%, rgba(0,0,0,.6) 45%, transparent 70%); mask: radial-gradient(circle, transparent 12%, #000 22%, rgba(0,0,0,.6) 45%, transparent 70%);
+  animation: rays-spin 9s linear infinite, rays-pulse 1.6s ease-in-out infinite; }
+.rays::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; background: radial-gradient(rgba(255, 250, 220, .95), rgba(255, 220, 120, .5) 45%, transparent 70%); }
+.critter.golden .rays, .card.golden .rays { display: block; }
+.card.golden { position: relative; overflow: hidden; isolation: isolate; }
+.card .rays { top: 32%; width: 170%; z-index: -1; }
+@keyframes rays-spin { to { rotate: 360deg; } }
+@keyframes rays-pulse { 50% { scale: 1.12; opacity: .75; } }
+@media (prefers-reduced-motion: reduce) { .rays { animation: none; } }

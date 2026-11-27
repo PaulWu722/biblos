@@ -1,4 +1,5 @@
 import type { Animal } from '../core/types';
+import { speciesById } from '../../config/animals';
 
 /** public/scenes/<scene>/layout.json, in island.png pixel coordinates. */
 interface Layout {
@@ -18,10 +19,23 @@ interface Layout {
 }
 
 type Mode = 'walk' | 'fly' | 'swim' | 'still';
-// The raven is drawn perched, so it hops on the ground; the bronze serpent is a decoration on a pole.
-const MODE: Record<string, Mode> = { dove: 'fly', seagull: 'fly', eagle: 'fly', fish: 'swim', bronzeSerpent: 'still' };
+// The raven is drawn perched, so it hops on the ground. 'still' is for decorations that never move.
+const MODE: Record<string, Mode> = { dove: 'fly', seagull: 'fly', eagle: 'fly', fish: 'swim' };
 const LEVEL_SCALE = { 1: 0.6, 2: 0.85, 3: 1 } as const;
 const base = import.meta.env.BASE_URL;
+
+/** Sprite for a species at a level: Lv1 baby <id>-1.png, Lv2/Lv3 grown <id>-2.png. */
+export function spriteFor(id: string, level: 1 | 2 | 3): string {
+  return `${base}scenes/${speciesById(id).scene}/${id}-${level === 1 ? 1 : 2}.png`;
+}
+
+/** Every scene's layout, loaded once: animals that moved from earlier islands need their home scene's sprite data. */
+const layouts = new Map<string, Promise<Layout>>();
+const loadLayout = (scene: string): Promise<Layout> => {
+  if (!layouts.has(scene)) layouts.set(scene, fetch(`${base}scenes/${scene}/layout.json`).then((r) => r.json()));
+  return layouts.get(scene)!;
+};
+const bodyWidth = (l: Layout) => (l.body ? l.body[2] - l.body[0] : l.width);
 
 /**
  * Size and place an island so its body (not the decor above it) has the same on-screen size in every
@@ -39,7 +53,10 @@ function placeIsland(el: HTMLElement, slide: HTMLElement, layout: Layout): void 
   });
 }
 
-interface Sprite { el: HTMLElement; species: string; right: boolean; level: 1 | 2 | 3; x: number; y: number; tx: number; ty: number; idle: number; mode: Mode; }
+interface Sprite {
+  el: HTMLElement; species: string; home: string; right: boolean;
+  /** Lv3 height in the current island.png's pixels. */
+  height: number; level: 1 | 2 | 3; golden: boolean; x: number; y: number; tx: number; ty: number; idle: number; mode: Mode; }
 
 /**
  * The island drawn straight from the concept art, floating and gently bobbing,
@@ -56,6 +73,7 @@ export class IslandView {
   private layout: Layout | null = null;
   private sprites = new Map<string, Sprite>();
   private pending: Animal[] = [];
+  private golden: readonly string[] = [];
   private raf = 0;
   private last = 0;
   private reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -120,7 +138,7 @@ export class IslandView {
       el.dataset.scene = id;
       el.innerHTML = `<img class="plate" src="${base}scenes/${id}/island.png" alt="" draggable="false">`;
       this.host.insertBefore(el, this.slide);
-      void fetch(`${base}scenes/${id}/layout.json`).then((r) => r.json()).then((l: Layout) => {
+      void loadLayout(id).then((l) => {
         this.memoryLayouts.set(id, l);
         placeIsland(el.querySelector('.plate')!, el, l);
       }).catch(() => {}); // without its layout the memory just keeps the CSS fit
@@ -137,7 +155,7 @@ export class IslandView {
   private async load(): Promise<void> {
     const scene = this.sceneId;
     const dir = `${base}scenes/${scene}/`;
-    const layout: Layout = await (await fetch(dir + 'layout.json')).json();
+    const layout = await loadLayout(scene);
     if (scene !== this.sceneId) return; // switched again while loading
     this.layout = layout;
     const { width, height } = this.layout!;
@@ -150,54 +168,57 @@ export class IslandView {
       + (layout.fire ?? []).map((f, i) => `<div class="fire" style="left:${(f.x / width) * 100}%;top:${(f.y / height) * 100}%;width:${(f.w / width) * 100}%;height:${(f.h / height) * 100}%;animation-delay:${-i * 0.37}s">`
         + `<i class="glow"></i><img src="${dir}${f.src}" alt="" draggable="false"></div>`).join('')
       + '</div>';
-    // Optional layer: a missing or broken motion.json (the dev server answers index.html) must not stop the animals.
-    await this.addMotion(dir).catch(() => {});
     this.setAnimals(this.pending);
     this.start();
   }
 
-  /** Flowing water (shimmer masked to the water) and swaying plants, from motion.json made by tools/make-motion.py. */
-  private async addMotion(dir: string): Promise<void> {
-    const r = await fetch(dir + 'motion.json');
-    if (!r.ok) return; // scenes without motion layers stay still
-    const m: { sway: { src: string; x: number; y: number; w: number; h: number }[] } = await r.json();
-    const { width, height } = this.layout!;
-    const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-    let html = ''; // ripples are already added for every scene in load()
-    // The concept animation already moves the plants; swaying cut-outs on top would double them.
-    if (!this.layout!.motion) m.sway.forEach((p, i) => {
-      html += `<img class="sway" src="${dir}sway/${p.src}" alt="" draggable="false" style="left:${pct(p.x, width)};top:${pct(p.y, height)};width:${pct(p.w, width)};animation-delay:${(-i * 0.73).toFixed(2)}s">`;
-    });
-    this.box.querySelector('.bob')!.insertAdjacentHTML('beforeend', html);
-  }
-
   /** Sync sprites with the state's animals (add new, update level, remove gone). */
-  setAnimals(animals: Animal[]): void {
+  /** `golden`: scenes whose golden variant is unlocked; their species shine with rays and dance. */
+  setAnimals(animals: Animal[], golden: readonly string[] = this.golden): void {
     this.pending = animals;
+    this.golden = golden;
     if (!this.layout) return;
     const bob = this.box.querySelector('.bob')!;
     const keep = new Set(animals.map((a) => a.id));
     for (const [id, s] of this.sprites) if (!keep.has(id)) { s.el.remove(); this.sprites.delete(id); }
     for (const a of animals) {
       const cur = this.sprites.get(a.id);
-      if (cur) { if (cur.level !== a.level) this.applyLevel(cur, a.level); continue; }
+      if (cur) { if (cur.level !== a.level || cur.golden !== golden.includes(cur.home)) { cur.golden = golden.includes(cur.home); this.applyLevel(cur, a.level); } continue; }
       const mode = MODE[a.speciesId] ?? 'walk';
       const [x, y] = this.pick(mode);
       const el = document.createElement('div');
-      el.className = `critter ${mode}`;
-      el.innerHTML = `<img src="${base}scenes/${this.sceneId}/${a.speciesId}.png" alt="" draggable="false"><i class="halo"></i>`;
-      const s: Sprite = { el, species: a.speciesId, right: !!this.layout.facesRight?.includes(a.speciesId), level: a.level, x, y, tx: x, ty: y, idle: mode === 'still' ? Infinity : Math.random() * 2, mode };
+      el.className = `critter ${mode} idle`;
+      el.style.setProperty('--d', `${-Math.random() * 3.2}s`); // dancers out of step with each other
+      // Sprites live with the species' home scene, so animals carried over from earlier islands still show.
+      const home = speciesById(a.speciesId).scene;
+      el.innerHTML = `<img alt="" draggable="false"><i class="rays"></i><i class="halo"></i><i class="note" aria-hidden="true">♪</i>`;
+      const s: Sprite = { el, species: a.speciesId, home, right: false, height: this.layout.animalHeight, level: a.level, golden: golden.includes(home), x, y, tx: x, ty: y, idle: mode === 'still' ? Infinity : Math.random() * 2, mode };
       this.applyLevel(s, a.level);
+      void this.useHomeLayout(s);
       bob.appendChild(el);
       this.sprites.set(a.id, s);
       this.place(s, 0);
     }
   }
 
+  /** Take facing and size from the species' home layout, scaled so the animal keeps its size relative to the island body. */
+  private async useHomeLayout(s: Sprite): Promise<void> {
+    const cur = this.layout; if (!cur) return;
+    const home = await loadLayout(s.home).catch(() => null);
+    if (!home || this.layout !== cur) return;
+    s.right = !!home.facesRight?.includes(s.species);
+    s.height = (home.sizes?.[s.species] ?? home.animalHeight) * (bodyWidth(cur) / bodyWidth(home));
+    this.applyLevel(s, s.level);
+  }
+
   private applyLevel(s: Sprite, level: 1 | 2 | 3): void {
     s.level = level;
-    const { sizes, animalHeight, height } = this.layout!;
-    const h = ((sizes?.[s.species] ?? animalHeight) / height) * 100 * LEVEL_SCALE[level];
+    // Lv1 baby and Lv2 grown looks (<id>-1.png / <id>-2.png); Lv3 is the grown look plus the halo.
+    const img = s.el.querySelector('img')!, plain = `${base}scenes/${s.home}/${s.species}.png`;
+    img.onerror = () => { img.onerror = null; img.src = plain; }; // species without level art yet keep the concept sprite
+    img.src = spriteFor(s.species, level);
+    s.el.classList.toggle('golden', s.golden);
+    const h = (s.height / this.layout!.height) * 100 * LEVEL_SCALE[level];
     s.el.style.height = `${h}%`;
     s.el.classList.toggle('lv3', level === 3);
   }
@@ -225,12 +246,13 @@ export class IslandView {
     for (const s of this.sprites.values()) {
       if (s.idle > 0) {
         s.idle -= dt;
-        if (s.idle <= 0) [s.tx, s.ty] = this.pick(s.mode);
+        if (s.idle <= 0) { [s.tx, s.ty] = this.pick(s.mode); s.el.classList.remove('idle'); }
         this.place(s, s.mode === 'fly' ? Math.sin(now / 400) * 3 : 0);
         continue;
       }
       const dx = s.tx - s.x, dy = s.ty - s.y, dist = Math.hypot(dx, dy);
-      if (dist < 2) { s.idle = 1.5 + Math.random() * 3.5; continue; }
+      // Golden animals stop longer, because standing still is when they dance.
+      if (dist < 2) { s.idle = (s.golden ? 4 : 1.5) + Math.random() * (s.golden ? 4 : 3.5); s.el.classList.add('idle'); continue; }
       const step = Math.min(dist, speed * (s.mode === 'fly' ? 1.8 : s.mode === 'swim' ? 0.6 : 1) * dt);
       s.x += (dx / dist) * step; s.y += (dy / dist) * step;
       if (Math.abs(dx) > 1) s.el.classList.toggle('flip', dx > 0 !== s.right);

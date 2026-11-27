@@ -16,7 +16,7 @@ export const RULES = {
   tierBounds: { rareMin: 3, preciousMin: 5, legendaryMin: 6 },
   startXp: { normal: 0, rare: 30, precious: 60, legendary: 100 },
   storageKey: 'xinxi-island:v1',
-  stateVersion: 1,
+  stateVersion: 2,
 } as const;
 
 export type EggTier = 'normal' | 'rare' | 'precious' | 'legendary';

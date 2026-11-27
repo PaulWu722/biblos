@@ -5,6 +5,14 @@ type Raw = Record<string, unknown> & { version?: number };
 /** migrations[n] upgrades a version-n blob to n+1. */
 const migrations: Record<number, (s: Raw) => Raw> = {
   0: (s) => ({ ...s, version: 1, settings: { minReadSeconds: RULES.minReadSeconds, ...(s.settings as object | undefined) }, goldenScenes: s.goldenScenes ?? [], collection: s.collection ?? {} }),
+  // The Sinai bronze serpent was replaced by the ibex: keep the animal, its level and xp.
+  1: (s) => {
+    const rename = (id: unknown) => (id === 'bronzeSerpent' ? 'ibex' : id);
+    const animals = ((s.animals as Record<string, unknown>[] | undefined) ?? []).map((a) => ({ ...a, speciesId: rename(a.speciesId) }));
+    const collection = { ...(s.collection as Record<string, Record<string, unknown>> | undefined) };
+    if (collection.bronzeSerpent) { collection.ibex = { ...collection.bronzeSerpent, speciesId: 'ibex' }; delete collection.bronzeSerpent; }
+    return { ...s, version: 2, animals, collection };
+  },
 };
 
 export function migrate(raw: Raw): GameState {

@@ -1,12 +1,12 @@
-import { RULES, TIER_LABEL } from '../../config/rules';
+import { RULES, TIER_LABEL, type EggTier } from '../../config/rules';
 import { SCENES, sceneById } from '../../config/scenes';
 import { SPECIES, speciesById } from '../../config/animals';
 import { todayReadCount } from '../core/engine';
-import type { GameEvent, GameState } from '../core/types';
+import type { Animal, GameEvent, GameState } from '../core/types';
 import { fetchMe, getToken, login, setToken, type Me } from '../data/api';
 import { BOOKS, BOOK_IDS, articleId, loadArticle, loadQuizIndex, loadTitles, type Article, type BookId } from '../data/articles';
 import { LocalStorageAdapter, SupabaseAdapter, type StorageAdapter } from '../data/storage';
-import { IslandView } from '../render/islandView';
+import { IslandView, spriteFor } from '../render/islandView';
 import { Store } from './store';
 import { ICON } from './icons';
 
@@ -50,7 +50,7 @@ export async function startApp(root: HTMLElement): Promise<void> {
 const openGame = (token: string) => openWith(new SupabaseAdapter(token));
 async function openWith(adapter: StorageAdapter): Promise<void> {
   store = new Store(await adapter.load(), adapter);
-  store.subscribe((s, ev) => { stage?.setScene(s.currentSceneId, s.unlockedSceneIds); stage?.setAnimals(s.animals); announce(ev); });
+  store.subscribe((s, ev) => { stage?.setScene(s.currentSceneId, s.unlockedSceneIds); stage?.setAnimals(s.animals, s.goldenScenes); announce(ev); });
 }
 
 function toast(msg: string): void {
@@ -116,7 +116,7 @@ function showLogin(): void {
         setToken(r.token); me = r.me;
         await openGame(r.token);
         stage ??= new IslandView($('#stage'), store!.state.currentSceneId, store!.state.unlockedSceneIds);
-        stage.setAnimals(store!.state.animals);
+        stage.setAnimals(store!.state.animals, store!.state.goldenScenes);
         location.hash = '#/island'; route();
       } catch (err) { draw(p, err instanceof Error && err.message === 'bad phone' ? '手機號碼格式不對' : '登入失敗，請稍後再試'); }
     };
@@ -128,7 +128,7 @@ function showLogin(): void {
 function showIsland(view: HTMLElement, s: GameState): void {
   stage ??= new IslandView($('#stage'), s.currentSceneId, s.unlockedSceneIds);
   stage.setScene(s.currentSceneId, s.unlockedSceneIds);
-  stage.setAnimals(s.animals);
+  stage.setAnimals(s.animals, s.goldenScenes);
   document.body.dataset.scene = s.currentSceneId;
   const scene = sceneById(s.currentSceneId);
   const eggs = s.eggs.filter((e) => !e.hatched).length;
@@ -241,7 +241,7 @@ async function showQuiz(view: HTMLElement, book: BookId, idx: number): Promise<v
       ${rej?.type === 'REJECTED' ? `<h2>沒有計入</h2><p>${REJECT_TEXT[rej.reason] ?? '請再試一次。'}</p>`
         : `<h2>答對 ${correct} / ${art.questions.length} 題</h2>
            <p>${store!.state.companions.length ? `夥伴們各得到 ${xp} 點經驗` : `得到 ${xp} 點經驗（有動物後會分給夥伴）`}</p>
-           ${egg?.type === 'EGG_EARNED' ? `<div class="egg-big ${egg.egg.tier}"></div><p class="big">得到一顆${TIER_LABEL[egg.egg.tier]}！</p><a class="primary" href="#/egg">去孵蛋</a>`
+           ${egg?.type === 'EGG_EARNED' ? `${eggArt(egg.egg.tier, 'div')}<p class="big">得到一顆${TIER_LABEL[egg.egg.tier]}！</p><a class="primary" href="#/egg">去孵蛋</a>`
              : `<p class="sub">再讀 ${left} 篇得一顆蛋</p><a class="primary" href="#/books/${book}">再讀一篇</a>`}`}
       <a href="#/island" class="link">回到島上</a></section>`;
   };
@@ -249,16 +249,23 @@ async function showQuiz(view: HTMLElement, book: BookId, idx: number): Promise<v
 }
 
 // ---------- 孵蛋 ----------
+/** Egg picture drawn twice, clipped into a top and bottom shell so it can crack open. */
+function eggArt(tier: EggTier, tag: 'div' | 'button', attrs = ''): string {
+  const src = `${import.meta.env.BASE_URL}eggs/${tier}.png`;
+  return `<${tag} class="egg-big ${tier}" ${attrs}><img class="shell top" alt="" src="${src}"><img class="shell bot" alt="" src="${src}"></${tag}>`;
+}
 function showEggs(view: HTMLElement, s: GameState): void {
   const eggs = s.eggs.filter((e) => !e.hatched);
   view.innerHTML = `<section class="panel eggs"><h2>孵蛋</h2>
     ${eggs.length ? '<p class="sub">點一下蛋來孵化</p>' : '<p class="sub">目前沒有蛋。讀 3 篇信息就能得到一顆。</p><a class="primary" href="#/books">去讀信息</a>'}
-    <div class="egg-row">${eggs.map((e) => `<button class="egg-big ${e.tier}" data-id="${e.id}" aria-label="${TIER_LABEL[e.tier]}"></button>`).join('')}</div>
+    <div class="egg-row">${eggs.map((e) => eggArt(e.tier, 'button', `data-id="${e.id}" aria-label="${TIER_LABEL[e.tier]}"`)).join('')}</div>
     <div id="hatched"></div></section>`;
   view.querySelectorAll<HTMLButtonElement>('.egg-row button').forEach((b) => (b.onclick = async () => {
     view.querySelectorAll('.egg-row button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
     b.classList.add('shake');
     await new Promise((r) => setTimeout(r, 1200));
+    b.classList.replace('shake', 'crack');
+    await new Promise((r) => setTimeout(r, 600));
     let events: GameEvent[] = [];
     try { events = await store!.act({ type: 'HATCH_EGG', eggId: b.dataset.id! }); }
     catch { toast('存檔失敗，請檢查網路；下次存檔會一起補上。'); events = []; }
@@ -266,13 +273,17 @@ function showEggs(view: HTMLElement, s: GameState): void {
     if (h?.type !== 'EGG_HATCHED') return showEggs(view, store!.state);
     const a = h.animal;
     view.innerHTML = `<section class="panel result">
-      <div class="burst"></div><h2>孵出了「${speciesById(a.speciesId).name}」！</h2>
+      <div class="burst">${hatchImg(a)}</div><h2>孵出了「${speciesById(a.speciesId).name}」！</h2>
       <p>Lv${a.level} ${LEVEL_NAME[a.level]} · ${a.xp} 經驗</p>
       ${store!.state.companions.includes(a.id) ? '<p class="sub">牠成為你的夥伴，讀信息時會一起成長。</p>' : ''}
       ${store!.state.eggs.some((e) => !e.hatched) ? '<a class="primary" href="#/egg" id="more">再孵一顆</a>' : ''}
       <a class="primary" href="#/island">去島上看看</a></section>`;
     view.querySelector<HTMLAnchorElement>('#more')?.addEventListener('click', (e) => { e.preventDefault(); showEggs(view, store!.state); });
   }));
+}
+
+function hatchImg(a: Animal): string {
+  return `<img alt="" src="${spriteFor(a.speciesId, a.level)}">`;
 }
 
 // ---------- 圖鑑 ----------
@@ -283,8 +294,10 @@ function showCollection(view: HTMLElement, s: GameState): void {
     ${SCENES.map((sc) => `<h3>${sc.name}${s.goldenScenes.includes(sc.id) ? ' <span class="gold">金色解鎖</span>' : ''}</h3>
       <div class="grid">${SPECIES.filter((x) => x.scene === sc.id).map((x) => {
         const c = s.collection[x.id];
-        return c ? `<div class="card"><b>${x.name}</b><span>${stars(c.maxLevel)}</span><small>×${c.count}</small></div>`
-          : '<div class="card locked"><b>？</b></div>';
+        const gold = s.goldenScenes.includes(sc.id);
+        const img = `${gold && c ? '<i class="rays"></i>' : ''}<img alt="" loading="lazy" src="${spriteFor(x.id, c?.maxLevel ?? 2)}">`;
+        return c ? `<div class="card${c.maxLevel === 3 ? ' lv3' : ''}${gold ? ' golden' : ''}">${img}<b>${x.name}</b><span>${stars(c.maxLevel)}</span><small>×${c.count}</small></div>`
+          : `<div class="card locked">${img}<b>？</b></div>`;
       }).join('')}</div>`).join('')}
     <h3>我的動物 <small>（最多選 ${RULES.maxCompanions} 隻夥伴，讀信息時分到經驗）</small></h3>
     <ul class="mine">${s.animals.map((a) => `<li><label><input type="checkbox" data-id="${a.id}" ${s.companions.includes(a.id) ? 'checked' : ''}>

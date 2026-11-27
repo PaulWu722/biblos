@@ -158,9 +158,17 @@ describe('05:00 Taipei reset', () => {
 describe('schema migration', () => {
   it('upgrades v0 to v1 and keeps data', () => {
     const m = migrate({ version: 0, userId: 'u', reads: [], pendingBatch: [], eggs: [], animals: [], companions: [], currentSceneId: 'eden', unlockedSceneIds: ['eden'], lastResetAt: 'x' });
-    expect(m.version).toBe(1);
+    expect(m.version).toBe(2);
     expect(m.goldenScenes).toEqual([]);
     expect(m.settings.minReadSeconds).toBe(90);
+  });
+  it('turns old bronze serpents into ibexes, keeping level and xp', () => {
+    const m = migrate({ version: 1, userId: 'u', reads: [], pendingBatch: [], eggs: [], companions: [], currentSceneId: 'wilderness', unlockedSceneIds: ['eden'], lastResetAt: 'x', goldenScenes: [], settings: { minReadSeconds: 90 },
+      animals: [{ id: 'a', speciesId: 'bronzeSerpent', level: 2, xp: 120 }], collection: { bronzeSerpent: { id: 'c', speciesId: 'bronzeSerpent', maxLevel: 2, count: 1 } } });
+    expect(m.version).toBe(2);
+    expect(m.animals[0]).toMatchObject({ speciesId: 'ibex', level: 2, xp: 120 });
+    expect(m.collection.ibex).toMatchObject({ speciesId: 'ibex', maxLevel: 2 });
+    expect(m.collection.bronzeSerpent).toBeUndefined();
   });
   it('rejects newer versions', () => {
     expect(() => migrate({ version: 99 })).toThrow();

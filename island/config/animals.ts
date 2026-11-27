@@ -16,7 +16,7 @@ export const SPECIES: SpeciesConfig[] = [
   { id: 'camel', name: '駱駝', scene: 'wilderness' },
   { id: 'donkey', name: '驢', scene: 'wilderness' },
   { id: 'quail', name: '鵪鶉', scene: 'wilderness' },
-  { id: 'bronzeSerpent', name: '銅蛇', scene: 'wilderness' },
+  { id: 'ibex', name: '野山羊', scene: 'wilderness' },
   { id: 'lamb', name: '羔羊', scene: 'bethlehem' },
   { id: 'sheepdog', name: '牧羊犬', scene: 'bethlehem' },
   { id: 'ox', name: '牛', scene: 'bethlehem' },
