@@ -21,3 +21,10 @@ export interface Me { id: number; nick: string; }
 export type LoginResult = { need_nick: true } | { token: string; me: Me };
 export const login = (phone: string, nick?: string) => rpc<LoginResult>('biblos_login', { p_phone: phone, p_nick: nick ?? null });
 export const fetchMe = (token: string) => rpc<Me | null>('biblos_me', { p_token: token });
+
+export interface Runner { id: number; nick: string; scene: string; animals: number; reads: number; }
+export const fetchBoard = (token: string) => rpc<Runner[]>('biblos_island_board', { p_token: token });
+export interface Visit { nick: string; scene: string; animals: import('../core/types').Animal[]; }
+export const fetchIsland = (token: string, uid: number) => rpc<Visit | null>('biblos_island_view', { p_token: token, p_uid: uid });
+export interface AdminRow extends Runner { phone: string; created: string; updated: string | null; }
+export const fetchAdmin = (key: string) => rpc<AdminRow[]>('biblos_island_admin', { p_key: key });

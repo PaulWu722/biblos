@@ -8,7 +8,7 @@ import type { EngineCtx, GameAction, GameState } from '../src/core/types';
 
 let n = 0;
 const ctx = (iso = '2026-11-26T08:00:00Z', seed = 1): EngineCtx => ({ now: new Date(iso), rng: mulberry32(seed), newId: () => `id${++n}` });
-const read = (id: string, correct: number): GameAction => ({ type: 'SUBMIT_ARTICLE', articleId: id, correct, readSeconds: 100, scrolledToBottom: true });
+const read = (id: string, correct: number): GameAction => ({ type: 'SUBMIT_ARTICLE', articleId: id, correct, scrolledToBottom: true });
 const run = (s: GameState, a: GameAction, c = ctx()) => dispatch(s, a, c);
 
 describe('tiers & xp', () => {
@@ -44,9 +44,8 @@ describe('reading → egg', () => {
     expect(r.events).toEqual([{ type: 'REJECTED', reason: 'DUPLICATE_ARTICLE' }]);
     expect(r.state.reads).toHaveLength(1);
   });
-  it('anti-cheat: min time and scroll', () => {
+  it('anti-cheat: must scroll to the end', () => {
     const s = createInitialState(ctx());
-    expect(run(s, { ...read('a', 1), readSeconds: 89 } as GameAction).events[0]).toEqual({ type: 'REJECTED', reason: 'TOO_FAST' });
     expect(run(s, { ...read('a', 1), scrolledToBottom: false } as GameAction).events[0]).toEqual({ type: 'REJECTED', reason: 'NOT_SCROLLED' });
     expect(run(s, { ...read('a', 3) } as GameAction).events[0]).toEqual({ type: 'REJECTED', reason: 'BAD_INPUT' });
   });
@@ -60,14 +59,13 @@ function withEgg(tier: 'normal' | 'legendary' = 'normal'): GameState {
 }
 
 describe('hatching', () => {
-  it('starting xp by tier; legendary gives signature animal; auto-companion', () => {
+  it('starting xp by tier; legendary gives signature animal', () => {
     const s = withEgg('legendary');
     const r = run(s, { type: 'HATCH_EGG', eggId: s.eggs[0]!.id });
     const a = r.state.animals[0]!;
     expect(a.speciesId).toBe('deer');
     expect(a.xp).toBe(RULES.startXp.legendary);
     expect(a.level).toBe(2);
-    expect(r.state.companions).toEqual([a.id]);
     expect(r.state.collection.deer!.maxLevel).toBe(2);
   });
   it('cannot hatch twice', () => {
@@ -92,15 +90,22 @@ describe('xp, level-up, capacity, unlock, golden', () => {
     const egg = t.eggs.find((e) => !e.hatched)!;
     return run(t, { type: 'HATCH_EGG', eggId: egg.id }).state;
   };
-  it('companions earn 10 per article + 10 per correct and level up', () => {
-    let s = withEgg('legendary');
-    s = run(s, { type: 'HATCH_EGG', eggId: s.eggs[0]!.id }).state; // xp 100, lv2
-    const r = run(s, read('y1', 2));
-    expect(r.state.animals[0]!.xp).toBe(130);
-    let t = s; let ev: string[] = [];
-    for (let i = 0; i < 8; i++) { const rr = run(t, read(`z${i}`, 2)); t = rr.state; ev = ev.concat(rr.events.map((e) => e.type)); }
-    expect(t.animals[0]!.level).toBe(3);
-    expect(ev).toContain('LEVEL_UP');
+  it('reading fills the xp pool (10 per article + 10 per correct); animals level up only when spent', () => {
+    let s = withEgg('legendary'); // 3 articles × 2 correct = 90 xp
+    expect(s.xp).toBe(90);
+    s = run(s, { type: 'HATCH_EGG', eggId: s.eggs[0]!.id }).state; // animal xp 100, lv2
+    s = run(s, read('y1', 2)).state;
+    expect(s.xp).toBe(120);
+    expect(s.animals[0]!.xp).toBe(100);
+    const id = s.animals[0]!.id;
+    expect(run(s, { type: 'LEVEL_UP_ANIMAL', animalId: id }).events[0]).toEqual({ type: 'REJECTED', reason: 'NOT_ENOUGH_XP' }); // needs 150
+    for (let i = 0; i < 2; i++) s = run(s, read(`z${i}`, 1)).state; // +40 → 160
+    const r = run(s, { type: 'LEVEL_UP_ANIMAL', animalId: id });
+    expect(r.events[0]).toEqual({ type: 'LEVEL_UP', animalId: id, level: 3 });
+    expect(r.state.xp).toBe(10);
+    expect(r.state.animals[0]).toMatchObject({ level: 3, xp: 250 });
+    expect(r.state.collection.deer!.maxLevel).toBe(3);
+    expect(run(r.state, { type: 'LEVEL_UP_ANIMAL', animalId: id }).events[0]).toEqual({ type: 'REJECTED', reason: 'MAX_LEVEL' });
   });
   it('scene fills at capacity, unlocks the next, animals carry over', () => {
     let s = createInitialState(ctx());
@@ -126,16 +131,15 @@ describe('xp, level-up, capacity, unlock, golden', () => {
     s = { ...s, currentSceneId: 'jerusalem', unlockedSceneIds: ['eden', 'ark', 'wilderness', 'bethlehem', 'galilee', 'jerusalem'] };
     const fake = Array.from({ length: 29 }, (_, i) => ({ id: `f${i}`, createdAt: '', updatedAt: '', speciesId: 'lion', originSceneId: 'jerusalem' as const, xp: 0, level: 1 as const }));
     s = { ...s, animals: fake };
-    const r = run(hatchOne(s), { type: 'SET_COMPANIONS', animalIds: [] });
-    expect(r.state.currentSceneId).toBe('jerusalem');
+    expect(hatchOne(s).currentSceneId).toBe('jerusalem');
   });
   it('golden variant unlocks when all scene species reach Lv3', () => {
     let s = createInitialState(ctx());
     const mk = (speciesId: string, i: number) => ({ id: `g${i}`, createdAt: '', updatedAt: '', speciesId, originSceneId: 'eden' as const, xp: 249, level: 2 as const });
-    s = { ...s, animals: ['rabbit', 'sheep', 'deer', 'dove'].map(mk), companions: ['g0', 'g1', 'g2'] };
-    s = run(s, read('gold1', 0)).state; // +10 xp → 259 lv3 for 3 companions
+    s = { ...s, animals: ['rabbit', 'sheep', 'deer', 'dove'].map(mk), xp: 4 };
+    for (const id of ['g0', 'g1', 'g2']) s = run(s, { type: 'LEVEL_UP_ANIMAL', animalId: id }).state; // 1 xp each to Lv3
     expect(s.goldenScenes).toEqual([]);
-    s = run({ ...s, companions: ['g3'] }, read('gold2', 0)).state;
+    s = run(s, { type: 'LEVEL_UP_ANIMAL', animalId: 'g3' }).state;
     expect(s.goldenScenes).toEqual(['eden']);
   });
 });
@@ -158,14 +162,15 @@ describe('05:00 Taipei reset', () => {
 describe('schema migration', () => {
   it('upgrades v0 to v1 and keeps data', () => {
     const m = migrate({ version: 0, userId: 'u', reads: [], pendingBatch: [], eggs: [], animals: [], companions: [], currentSceneId: 'eden', unlockedSceneIds: ['eden'], lastResetAt: 'x' });
-    expect(m.version).toBe(2);
+    expect(m.version).toBe(3);
     expect(m.goldenScenes).toEqual([]);
-    expect(m.settings.minReadSeconds).toBe(90);
+    expect(m.xp).toBe(0);
+    expect('companions' in m).toBe(false);
   });
   it('turns old bronze serpents into ibexes, keeping level and xp', () => {
     const m = migrate({ version: 1, userId: 'u', reads: [], pendingBatch: [], eggs: [], companions: [], currentSceneId: 'wilderness', unlockedSceneIds: ['eden'], lastResetAt: 'x', goldenScenes: [], settings: { minReadSeconds: 90 },
       animals: [{ id: 'a', speciesId: 'bronzeSerpent', level: 2, xp: 120 }], collection: { bronzeSerpent: { id: 'c', speciesId: 'bronzeSerpent', maxLevel: 2, count: 1 } } });
-    expect(m.version).toBe(2);
+    expect(m.version).toBe(3);
     expect(m.animals[0]).toMatchObject({ speciesId: 'ibex', level: 2, xp: 120 });
     expect(m.collection.ibex).toMatchObject({ speciesId: 'ibex', maxLevel: 2 });
     expect(m.collection.bronzeSerpent).toBeUndefined();

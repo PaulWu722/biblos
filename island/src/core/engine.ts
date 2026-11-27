@@ -11,11 +11,11 @@ export function createInitialState(ctx: Pick<EngineCtx, 'now' | 'newId'>): GameS
   return {
     version: RULES.stateVersion,
     userId: ctx.newId(),
-    reads: [], pendingBatch: [], eggs: [], animals: [], companions: [],
+    reads: [], pendingBatch: [], eggs: [], animals: [], xp: 0,
     currentSceneId: 'eden', unlockedSceneIds: ['eden'],
     collection: {}, goldenScenes: [],
     lastResetAt: ctx.now.toISOString(),
-    settings: { minReadSeconds: RULES.minReadSeconds },
+    settings: {},
   };
 }
 
@@ -58,15 +58,8 @@ export function pickSpecies(tier: EggTier, scene: SceneId, rng: () => number): s
 
 const stamp = (ctx: EngineCtx) => ctx.now.toISOString();
 
-function addXp(animals: Animal[], ids: string[], amount: number, ctx: EngineCtx, events: GameEvent[]): Animal[] {
-  return animals.map((a) => {
-    if (!ids.includes(a.id)) return a;
-    const xp = a.xp + amount;
-    const level = levelForXp(xp);
-    if (level > a.level) for (let l = a.level + 1; l <= level; l++) events.push({ type: 'LEVEL_UP', animalId: a.id, level: l as 2 | 3 });
-    return { ...a, xp, level, updatedAt: stamp(ctx) };
-  });
-}
+/** XP an animal still needs to reach its next level (0 at Lv3). */
+export const upgradeCost = (a: Animal): number => (a.level === 3 ? 0 : Math.max(0, RULES.levelXp[(a.level + 1) as 2 | 3] - a.xp));
 
 /** Golden variant of scene S: every species of S has been collected at Lv3. */
 function updateCollectionAndGolden(s: GameState, ctx: EngineCtx, events: GameEvent[]): GameState {
@@ -101,10 +94,8 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
     if (!articleId || !Number.isInteger(correct) || correct < 0 || correct > RULES.questionsPerArticle) return reject('BAD_INPUT');
     if (s.reads.some((r) => r.articleId === articleId)) return reject('DUPLICATE_ARTICLE');
     if (!action.scrolledToBottom) return reject('NOT_SCROLLED');
-    if (action.readSeconds < s.settings.minReadSeconds) return reject('TOO_FAST');
 
     const read = { id: ctx.newId(), createdAt: stamp(ctx), updatedAt: stamp(ctx), articleId, correct };
-    let animals = addXp(s.animals, s.companions, RULES.xpPerArticle + RULES.xpPerCorrect * correct, ctx, events);
     const pendingBatch = [...s.pendingBatch, { articleId, correct }];
     let eggs = s.eggs;
     let batch = pendingBatch;
@@ -115,8 +106,7 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
       batch = [];
       events.push({ type: 'EGG_EARNED', egg });
     }
-    s = { ...s, reads: [...s.reads, read], pendingBatch: batch, eggs, animals };
-    s = updateCollectionAndGolden(s, ctx, events);
+    s = { ...s, reads: [...s.reads, read], pendingBatch: batch, eggs, xp: s.xp + RULES.xpPerArticle + RULES.xpPerCorrect * correct };
     return { state: s, events };
   }
 
@@ -130,8 +120,7 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
       speciesId, originSceneId: s.currentSceneId, xp, level: levelForXp(xp),
     };
     const hatched: Egg = { ...egg, hatched: true, animalId: animal.id, updatedAt: stamp(ctx) };
-    const companions = s.companions.length < RULES.maxCompanions ? [...s.companions, animal.id] : s.companions;
-    s = { ...s, eggs: s.eggs.map((e) => (e.id === egg.id ? hatched : e)), animals: [...s.animals, animal], companions };
+    s = { ...s, eggs: s.eggs.map((e) => (e.id === egg.id ? hatched : e)), animals: [...s.animals, animal] };
     events.push({ type: 'EGG_HATCHED', egg: hatched, animal });
     s = updateCollectionAndGolden(s, ctx, events);
     if (sceneFull(s)) {
@@ -145,9 +134,17 @@ export function dispatch(state: GameState, action: GameAction, ctx: EngineCtx): 
     return { state: s, events };
   }
 
-  if (action.type === 'SET_COMPANIONS') {
-    const ids = [...new Set(action.animalIds)].filter((id) => s.animals.some((a) => a.id === id)).slice(0, RULES.maxCompanions);
-    return { state: { ...s, companions: ids }, events };
+  if (action.type === 'LEVEL_UP_ANIMAL') {
+    const a = s.animals.find((x) => x.id === action.animalId);
+    if (!a) return reject('BAD_INPUT');
+    if (a.level === 3) return reject('MAX_LEVEL');
+    const cost = upgradeCost(a);
+    if (s.xp < cost) return reject('NOT_ENOUGH_XP');
+    const level = (a.level + 1) as 2 | 3;
+    const up = { ...a, level, xp: a.xp + cost, updatedAt: stamp(ctx) };
+    events.push({ type: 'LEVEL_UP', animalId: a.id, level });
+    s = { ...s, xp: s.xp - cost, animals: s.animals.map((x) => (x.id === a.id ? up : x)) };
+    return { state: updateCollectionAndGolden(s, ctx, events), events };
   }
   return reject('BAD_INPUT');
 }

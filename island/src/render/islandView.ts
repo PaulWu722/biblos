@@ -90,8 +90,19 @@ export class IslandView {
     let settle = 0;
     host.addEventListener('scroll', () => { clearTimeout(settle); settle = window.setTimeout(() => this.reportView(), 80); }, { passive: true });
     void this.load();
-    document.addEventListener('visibilitychange', () => (document.hidden ? this.stop() : this.start()));
-    new ResizeObserver(() => this.fit()).observe(this.slide);
+    document.addEventListener('visibilitychange', this.onVisibility);
+    this.resize.observe(this.slide);
+  }
+
+  private onVisibility = () => (document.hidden ? this.stop() : this.start());
+  private resize = new ResizeObserver(() => this.fit());
+
+  /** For throwaway views (visiting someone's island): stop animating and remove the slides. */
+  destroy(): void {
+    this.stop();
+    this.resize.disconnect();
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.host.innerHTML = '';
   }
 
   /**

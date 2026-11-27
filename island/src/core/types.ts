@@ -7,7 +7,7 @@ export interface PendingRead { articleId: string; correct: number; }
 export interface Egg extends Entity { tier: EggTier; sceneId: SceneId; hatched: boolean; animalId?: string; }
 export interface Animal extends Entity { speciesId: string; originSceneId: SceneId; xp: number; level: 1 | 2 | 3; }
 export interface CollectionEntry extends Entity { speciesId: string; maxLevel: 1 | 2 | 3; count: number; }
-export interface Settings { minReadSeconds: number; reducedMotion?: boolean; }
+export interface Settings { reducedMotion?: boolean; }
 
 export interface GameState {
   version: number;
@@ -16,7 +16,8 @@ export interface GameState {
   pendingBatch: PendingRead[];
   eggs: Egg[];
   animals: Animal[];
-  companions: string[];
+  /** Experience earned by reading, waiting to be spent on levelling animals up (in 圖鑑). */
+  xp: number;
   currentSceneId: SceneId;
   unlockedSceneIds: SceneId[];
   collection: Record<string, CollectionEntry>;
@@ -26,9 +27,9 @@ export interface GameState {
 }
 
 export type GameAction =
-  | { type: 'SUBMIT_ARTICLE'; articleId: string; correct: number; readSeconds: number; scrolledToBottom: boolean }
+  | { type: 'SUBMIT_ARTICLE'; articleId: string; correct: number; scrolledToBottom: boolean }
   | { type: 'HATCH_EGG'; eggId: string }
-  | { type: 'SET_COMPANIONS'; animalIds: string[] };
+  | { type: 'LEVEL_UP_ANIMAL'; animalId: string };
 
 export type GameEvent =
   | { type: 'EGG_EARNED'; egg: Egg }
@@ -37,7 +38,7 @@ export type GameEvent =
   | { type: 'SCENE_FULL'; sceneId: SceneId }
   | { type: 'SCENE_UNLOCKED'; from: SceneId; to: SceneId }
   | { type: 'GOLDEN_UNLOCKED'; sceneId: SceneId }
-  | { type: 'REJECTED'; reason: 'DUPLICATE_ARTICLE' | 'TOO_FAST' | 'NOT_SCROLLED' | 'BAD_INPUT' | 'NO_EGG' };
+  | { type: 'REJECTED'; reason: 'DUPLICATE_ARTICLE' | 'NOT_SCROLLED' | 'BAD_INPUT' | 'NO_EGG' | 'MAX_LEVEL' | 'NOT_ENOUGH_XP' };
 
 export interface EngineCtx { now: Date; rng: () => number; newId: () => string; }
 export interface DispatchResult { state: GameState; events: GameEvent[]; }

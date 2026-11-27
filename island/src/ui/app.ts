@@ -1,9 +1,9 @@
 import { RULES, TIER_LABEL, type EggTier } from '../../config/rules';
 import { SCENES, sceneById } from '../../config/scenes';
 import { SPECIES, speciesById } from '../../config/animals';
-import { todayReadCount } from '../core/engine';
+import { upgradeCost } from '../core/engine';
 import type { Animal, GameEvent, GameState } from '../core/types';
-import { fetchMe, getToken, login, setToken, type Me } from '../data/api';
+import { fetchAdmin, fetchBoard, fetchIsland, fetchMe, getToken, login, setToken, type AdminRow, type Me, type Runner, type Visit } from '../data/api';
 import { BOOKS, BOOK_IDS, articleId, loadArticle, loadQuizIndex, loadTitles, type Article, type BookId } from '../data/articles';
 import { LocalStorageAdapter, SupabaseAdapter, type StorageAdapter } from '../data/storage';
 import { IslandView, spriteFor } from '../render/islandView';
@@ -14,7 +14,6 @@ const esc = (s: unknown) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCode
 const LEVEL_NAME = { 1: '幼崽', 2: '成長', 3: '成熟' } as const;
 const REJECT_TEXT: Record<string, string> = {
   DUPLICATE_ARTICLE: '這篇已經讀過了，每篇只算一次。',
-  TOO_FAST: `閱讀時間不足 ${RULES.minReadSeconds} 秒。`,
   NOT_SCROLLED: '請先讀到文章最後。',
 };
 
@@ -24,8 +23,12 @@ let localPreview = false;
 let me: Me | null = null;
 let stage: IslandView | null = null;
 /** Reading that finished on #/read and is waiting for its quiz. */
-let finishedRead: { id: string; seconds: number; scrolled: boolean } | null = null;
+let finishedRead: { id: string; scrolled: boolean } | null = null;
 let cleanup: (() => void) | null = null;
+/** Scene the island just moved to; its transition plays the next time the island page shows. */
+let pendingMove: string | null = null;
+/** Admin key, kept in memory only. */
+let adminKey: string | null = null;
 
 const $ = (sel: string) => document.querySelector(sel) as HTMLElement;
 
@@ -50,7 +53,11 @@ export async function startApp(root: HTMLElement): Promise<void> {
 const openGame = (token: string) => openWith(new SupabaseAdapter(token));
 async function openWith(adapter: StorageAdapter): Promise<void> {
   store = new Store(await adapter.load(), adapter);
-  store.subscribe((s, ev) => { stage?.setScene(s.currentSceneId, s.unlockedSceneIds); stage?.setAnimals(s.animals, s.goldenScenes); announce(ev); });
+  store.subscribe((s, ev) => {
+    // Off the island page, the move to a new island waits for showIsland so the slide and transition are seen.
+    if (document.body.dataset.page === 'island') stage?.setScene(s.currentSceneId, s.unlockedSceneIds);
+    stage?.setAnimals(s.animals, s.goldenScenes); announce(ev);
+  });
 }
 
 function toast(msg: string): void {
@@ -61,15 +68,17 @@ function toast(msg: string): void {
 
 function announce(events: GameEvent[]): void {
   for (const e of events) {
-    if (e.type === 'LEVEL_UP') toast(`有夥伴升到 Lv${e.level}「${LEVEL_NAME[e.level]}」！`);
-    if (e.type === 'SCENE_UNLOCKED') toast(`${sceneById(e.from).name}住滿了！大家一起搬到「${sceneById(e.to).name}」`);
-    if (e.type === 'GOLDEN_UNLOCKED') toast(`${sceneById(e.sceneId).name}的金色版本解鎖了！`);
+    if (e.type === 'LEVEL_UP') { const a = store!.state.animals.find((x) => x.id === e.animalId); toast(`${a ? speciesById(a.speciesId).name : '動物'}升到 Lv${e.level}「${LEVEL_NAME[e.level]}」！`); }
+    if (e.type === 'SCENE_UNLOCKED') { toast(`${sceneById(e.from).name}住滿了！大家一起搬到「${sceneById(e.to).name}」`); pendingMove = e.to; }
+    if (e.type === 'GOLDEN_UNLOCKED') toast(`${sceneById(e.sceneId).name}的動物都長大了，開始發光跳舞！`);
   }
 }
 
 function route(): void {
   cleanup?.(); cleanup = null;
   const [page = 'island', ...args] = location.hash.replace(/^#\/?/, '').split('/');
+  delete document.body.dataset.visit;
+  if (page === 'admin') { document.body.dataset.page = 'admin'; $('#tabs').innerHTML = ''; return void showAdmin($('#view')); }
   if (!store) return showLogin();
   const s = store.state;
   const view = $('#view');
@@ -82,13 +91,15 @@ function route(): void {
   if (page === 'egg') return showEggs(view, s);
   if (page === 'collection') return showCollection(view, s);
   if (page === 'scenes') return showScenes(view, s);
+  if (page === 'race') return void showRace(view, s);
+  if (page === 'visit') return void showVisit(view, Number(args[0]));
   if (page === 'settings') return showSettings(view);
   location.hash = '#/island';
 }
 
 function tabs(page: string): void {
-  const items = [['island', '島嶼', ICON.island], ['collection', '圖鑑', ICON.book], ['scenes', '場景', ICON.mountains]] as const;
-  const active = ['books', 'read', 'quiz', 'egg', 'settings'].includes(page) ? 'island' : page;
+  const items = [['island', '島嶼', ICON.island], ['race', '賽程', ICON.flag], ['collection', '圖鑑', ICON.book], ['scenes', '場景', ICON.mountains]] as const;
+  const active = ['books', 'read', 'quiz', 'egg', 'settings'].includes(page) ? 'island' : page === 'visit' ? 'race' : page;
   $('#tabs').innerHTML = items.map(([id, label, icon]) => `<a href="#/${id}" class="${id === active ? 'on' : ''}">${icon}<span>${label}</span></a>`).join('');
 }
 
@@ -105,7 +116,8 @@ function showLogin(): void {
       ${needNick ? '<label>暱稱（第一次登入）<input name="nick" maxlength="12" required></label>' : ''}
       <button class="primary">${needNick ? '建立並登入' : '登入'}</button>
       ${err ? `<p class="err">${esc(err)}</p>` : ''}</form>
-      <p class="hint">用手機號碼登入，不需要密碼；換手機也能接著玩。</p></section>`;
+      <p class="hint">用手機號碼登入，不需要密碼；換手機也能接著玩。</p>
+      <p class="hint"><a href="#/admin">管理員後台</a></p></section>`;
     view.querySelector('form')!.onsubmit = async (e) => {
       e.preventDefault();
       const f = new FormData(e.target as HTMLFormElement);
@@ -130,14 +142,13 @@ function showIsland(view: HTMLElement, s: GameState): void {
   stage.setScene(s.currentSceneId, s.unlockedSceneIds);
   stage.setAnimals(s.animals, s.goldenScenes);
   document.body.dataset.scene = s.currentSceneId;
+  if (pendingMove) { playTransition(pendingMove); pendingMove = null; }
   const scene = sceneById(s.currentSceneId);
   const eggs = s.eggs.filter((e) => !e.hatched).length;
-  const today = todayReadCount(s, new Date());
-  const goal = RULES.articlesPerEgg;
   view.innerHTML = `<header class="hud">
       <a href="#/settings" class="logo" aria-label="設定">${ICON.sprout}</a>
       <h1 data-len="${scene.name.length}"><span id="scene-name">${scene.name}</span><small id="scene-count">${s.animals.length}/${scene.capacity}</small></h1>
-      <div class="today">${ICON.book}<span>今日閱讀<br>${today >= goal ? `${today} 篇` : `${today}/${goal} 篇`}</span></div>
+      <a class="today" href="#/collection" aria-label="經驗值，到圖鑑升級">${ICON.star}<span>經驗值<br><b id="xp">${s.xp}</b></span></a>
     </header>
     <div class="hud-foot">
       ${eggs ? `<a class="pill" href="#/egg">${ICON.sprout}<span>孵化 ${eggs} 顆蛋</span></a>`
@@ -175,29 +186,21 @@ async function showRead(view: HTMLElement, book: BookId, idx: number): Promise<v
   let art: Article;
   try { art = await loadArticle(book, idx); } catch { view.innerHTML = '<section class="panel"><p class="err">找不到這篇，或題目還沒準備好。</p><a href="#/books">回到選篇</a></section>'; return; }
   const already = store!.state.reads.some((r) => r.articleId === art.id);
-  const need = store!.state.settings.minReadSeconds;
   view.innerHTML = `<article class="panel reader">
     <p class="meta">${BOOKS[book]} · 第 ${idx + 1} 篇</p><h2>${esc(art.title)}</h2>
     ${art.paragraphs.map((p) => `<p>${esc(p)}</p>`).join('')}
     <div id="end"></div>
     <div class="read-foot">${already ? '<p class="sub">這篇已經讀過，不會再算一次。</p>'
-      : `<button class="primary" id="done" disabled>還要 ${need} 秒</button>`}</div></article>`;
+      : '<button class="primary" id="done" disabled>請讀到最後</button>'}</div></article>`;
   scrollTo(0, 0);
   if (already) return;
 
-  // Anti-cheat: count only visible time, and require reaching the end.
-  let seconds = 0, scrolled = false;
+  // Anti-cheat: the quiz opens only after reaching the end of the article.
   const btn = $('#done') as HTMLButtonElement;
-  const update = () => {
-    const left = Math.max(0, need - Math.floor(seconds));
-    btn.disabled = left > 0 || !scrolled;
-    btn.textContent = left > 0 ? `還要 ${left} 秒` : scrolled ? '讀完了，去答題' : '請讀到最後';
-  };
-  const timer = setInterval(() => { if (!document.hidden) { seconds += 1; update(); } }, 1000);
-  const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) { scrolled = true; update(); } });
+  const io = new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting)) { btn.disabled = false; btn.textContent = '讀完了，去答題'; } });
   io.observe($('#end'));
-  btn.onclick = () => { finishedRead = { id: art.id, seconds, scrolled }; location.hash = `#/quiz/${book}/${idx}`; };
-  cleanup = () => { clearInterval(timer); io.disconnect(); };
+  btn.onclick = () => { finishedRead = { id: art.id, scrolled: true }; location.hash = `#/quiz/${book}/${idx}`; };
+  cleanup = () => io.disconnect();
 }
 
 // ---------- 答題 ----------
@@ -231,7 +234,7 @@ async function showQuiz(view: HTMLElement, book: BookId, idx: number): Promise<v
     finishedRead = null;
     let events: GameEvent[];
     try {
-      events = await store!.act({ type: 'SUBMIT_ARTICLE', articleId: id, correct, readSeconds: read.seconds, scrolledToBottom: read.scrolled });
+      events = await store!.act({ type: 'SUBMIT_ARTICLE', articleId: id, correct, scrolledToBottom: read.scrolled });
     } catch { toast('存檔失敗，請檢查網路；下次存檔會一起補上。'); events = []; }
     const rej = events.find((e) => e.type === 'REJECTED');
     const egg = events.find((e) => e.type === 'EGG_EARNED');
@@ -240,7 +243,7 @@ async function showQuiz(view: HTMLElement, book: BookId, idx: number): Promise<v
     view.innerHTML = `<section class="panel result">
       ${rej?.type === 'REJECTED' ? `<h2>沒有計入</h2><p>${REJECT_TEXT[rej.reason] ?? '請再試一次。'}</p>`
         : `<h2>答對 ${correct} / ${art.questions.length} 題</h2>
-           <p>${store!.state.companions.length ? `夥伴們各得到 ${xp} 點經驗` : `得到 ${xp} 點經驗（有動物後會分給夥伴）`}</p>
+           <p>得到 ${xp} 點經驗，累積到 ${store!.state.xp} 點</p><p class="sub">到圖鑑可以用經驗值幫動物升級</p>
            ${egg?.type === 'EGG_EARNED' ? `${eggArt(egg.egg.tier, 'div')}<p class="big">得到一顆${TIER_LABEL[egg.egg.tier]}！</p><a class="primary" href="#/egg">去孵蛋</a>`
              : `<p class="sub">再讀 ${left} 篇得一顆蛋</p><a class="primary" href="#/books/${book}">再讀一篇</a>`}`}
       <a href="#/island" class="link">回到島上</a></section>`;
@@ -275,7 +278,7 @@ function showEggs(view: HTMLElement, s: GameState): void {
     view.innerHTML = `<section class="panel result">
       <div class="burst">${hatchImg(a)}</div><h2>孵出了「${speciesById(a.speciesId).name}」！</h2>
       <p>Lv${a.level} ${LEVEL_NAME[a.level]} · ${a.xp} 經驗</p>
-      ${store!.state.companions.includes(a.id) ? '<p class="sub">牠成為你的夥伴，讀信息時會一起成長。</p>' : ''}
+      <p class="sub">讀信息累積經驗值，到圖鑑幫牠升級</p>
       ${store!.state.eggs.some((e) => !e.hatched) ? '<a class="primary" href="#/egg" id="more">再孵一顆</a>' : ''}
       <a class="primary" href="#/island">去島上看看</a></section>`;
     view.querySelector<HTMLAnchorElement>('#more')?.addEventListener('click', (e) => { e.preventDefault(); showEggs(view, store!.state); });
@@ -290,7 +293,13 @@ function hatchImg(a: Animal): string {
 function showCollection(view: HTMLElement, s: GameState): void {
   const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(3 - n);
   view.innerHTML = `<section class="panel"><h2>圖鑑</h2>
-    <p class="sub">已收集 ${Object.keys(s.collection).length} / ${SPECIES.length} 種</p>
+    <h3 id="mine">我的動物 <small>可用經驗值 <b>${s.xp}</b></small></h3>
+    <ul class="mine">${s.animals.map((a) => {
+      const cost = upgradeCost(a);
+      return `<li><img alt="" loading="lazy" src="${spriteFor(a.speciesId, a.level)}"><div><b>${speciesById(a.speciesId).name}</b><span>Lv${a.level} ${LEVEL_NAME[a.level]}</span></div>
+        ${a.level === 3 ? '<em>已成熟</em>' : `<button class="up" data-id="${a.id}" ${s.xp < cost ? 'disabled' : ''}>升級<small>${cost} 經驗</small></button>`}</li>`;
+    }).join('') || '<li class="empty">還沒有動物</li>'}</ul>
+    <h3>收集 <small>${Object.keys(s.collection).length} / ${SPECIES.length} 種</small></h3>
     ${SCENES.map((sc) => `<h3>${sc.name}${s.goldenScenes.includes(sc.id) ? ' <span class="gold">金色解鎖</span>' : ''}</h3>
       <div class="grid">${SPECIES.filter((x) => x.scene === sc.id).map((x) => {
         const c = s.collection[x.id];
@@ -299,13 +308,13 @@ function showCollection(view: HTMLElement, s: GameState): void {
         return c ? `<div class="card${c.maxLevel === 3 ? ' lv3' : ''}${gold ? ' golden' : ''}">${img}<b>${x.name}</b><span>${stars(c.maxLevel)}</span><small>×${c.count}</small></div>`
           : `<div class="card locked">${img}<b>？</b></div>`;
       }).join('')}</div>`).join('')}
-    <h3>我的動物 <small>（最多選 ${RULES.maxCompanions} 隻夥伴，讀信息時分到經驗）</small></h3>
-    <ul class="mine">${s.animals.map((a) => `<li><label><input type="checkbox" data-id="${a.id}" ${s.companions.includes(a.id) ? 'checked' : ''}>
-      ${speciesById(a.speciesId).name} <span>Lv${a.level} · ${a.xp} 經驗</span></label></li>`).join('') || '<li class="empty">還沒有動物</li>'}</ul></section>`;
-  view.querySelectorAll<HTMLInputElement>('.mine input').forEach((box) => (box.onchange = async () => {
-    const ids = [...view.querySelectorAll<HTMLInputElement>('.mine input:checked')].map((x) => x.dataset.id!);
-    if (ids.length > RULES.maxCompanions) { box.checked = false; return toast(`夥伴最多 ${RULES.maxCompanions} 隻`); }
-    try { await store!.act({ type: 'SET_COMPANIONS', animalIds: ids }); } catch { toast('存檔失敗，請檢查網路'); }
+</section>`;
+  view.querySelectorAll<HTMLButtonElement>('.mine .up').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const y = scrollY;
+    try { await store!.act({ type: 'LEVEL_UP_ANIMAL', animalId: b.dataset.id! }); } catch { toast('存檔失敗，請檢查網路'); }
+    showCollection(view, store!.state);
+    scrollTo(0, y);
   }));
 }
 
@@ -323,8 +332,13 @@ function showScenes(view: HTMLElement, s: GameState): void {
     const id = li.dataset.id as typeof s.currentSceneId;
     const order = SCENES.map((x) => x.id);
     const t = new Date().toISOString();
-    const animals = SPECIES.filter((x) => x.scene === id).map((x) => ({ id: `preview-${x.id}`, speciesId: x.id, level: 3 as const, xp: 250, originSceneId: id, createdAt: t, updatedAt: t }));
-    const next = { ...s, currentSceneId: id, unlockedSceneIds: order.slice(0, order.indexOf(id) + 1), animals, companions: [] };
+    // Mixed levels so the 圖鑑 level-up buttons can be tried.
+    const animals = SPECIES.filter((x) => x.scene === id).map((x, i) => { const level = ((i % 3) + 1) as 1 | 2 | 3; return { id: `preview-${x.id}`, speciesId: x.id, level, xp: RULES.levelXp[level], originSceneId: id, createdAt: t, updatedAt: t }; });
+    // Preview shows everything: the scene's glow-and-dance unlocked, all 4 egg kinds to hatch, and the move transition.
+    const eggs = (['normal', 'rare', 'precious', 'legendary'] as const).map((tier, i) => ({ id: `preview-egg-${i}`, tier, sceneId: id, hatched: false, createdAt: t, updatedAt: t }));
+    const next = { ...s, currentSceneId: id, unlockedSceneIds: order.slice(0, order.indexOf(id) + 1), animals, xp: 500, goldenScenes: [id], eggs,
+      collection: { ...s.collection, ...Object.fromEntries(animals.map((a) => [a.speciesId, { id: a.id, speciesId: a.speciesId, maxLevel: a.level, count: 1, createdAt: t, updatedAt: t }])) } };
+    if (id !== s.currentSceneId) pendingMove = id;
     localStorage.setItem(RULES.storageKey, JSON.stringify(next));
     store!.replace(next);
     location.hash = '#/island';
@@ -336,6 +350,7 @@ function showSettings(view: HTMLElement): void {
   view.innerHTML = `<section class="panel"><h2>設定</h2>
     <p>暱稱：${esc(me?.nick ?? '')}</p>
     <button id="export">匯出存檔（JSON）</button>
+    <a class="link" href="#/admin">管理員後台</a>
     <button id="logout">登出</button></section>`;
   $('#export').onclick = () => {
     const a = document.createElement('a');
@@ -343,4 +358,104 @@ function showSettings(view: HTMLElement): void {
     a.download = 'xinxi-island.json'; a.click();
   };
   $('#logout').onclick = () => { setToken(null); location.hash = ''; location.reload(); };
+}
+
+// ---------- 場景轉場 ----------
+const MOVE_TEXT: Record<string, string> = {
+  ark: '洪水漲起，又退去……', wilderness: '紅海分開了！', bethlehem: '夜裡，一顆星亮起來', galilee: '天亮了，來到湖邊', jerusalem: '雲開了，聖城降下',
+};
+function playTransition(to: string): void {
+  if (!MOVE_TEXT[to] || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const el = document.createElement('div');
+  el.className = `move move-${to}`;
+  el.innerHTML = `<i class="a"></i><i class="b"></i><p>${MOVE_TEXT[to] ?? ''}<br><b>${esc(sceneById(to as GameState['currentSceneId']).name)}</b></p>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ---------- 賽程 ----------
+/** How far along the 6 islands someone is: finished islands plus the share of the current one filled. */
+function racePos(r: Runner): number {
+  const sc = SCENES.find((x) => x.id === r.scene) ?? SCENES[0];
+  return (sc.order - 1 + Math.min(1, r.animals / sc.capacity)) / SCENES.length;
+}
+async function showRace(view: HTMLElement, s: GameState): Promise<void> {
+  view.innerHTML = '<section class="panel"><p class="loading">載入中…</p></section>';
+  let list: Runner[];
+  try { list = localPreview ? sampleBoard(s) : await fetchBoard(getToken()!); }
+  catch { view.innerHTML = '<section class="panel"><p class="err">賽程載入失敗，請檢查網路</p></section>'; return; }
+  list = list.map((r) => (r.id === me?.id ? { ...r, scene: s.currentSceneId, animals: s.animals.length, reads: s.reads.length } : r))
+    .sort((a, b) => racePos(b) - racePos(a) || b.reads - a.reads);
+  view.innerHTML = `<section class="panel race"><h2>奔跑賽程</h2>
+    <p class="sub">島住滿就往下一座島前進，點名字可以去看他的島</p>
+    <div class="race-head">${SCENES.map((sc) => `<span>${sc.name.slice(0, 2)}</span>`).join('')}</div>
+    <ol>${list.map((r, i) => `<li class="${r.id === me?.id ? 'me' : ''}"><a href="#/visit/${r.id}">
+      <div class="who"><b>${i + 1}</b>${esc(r.nick)}${r.id === me?.id ? '（我）' : ''}<small>${sceneById(r.scene as GameState['currentSceneId'])?.name ?? ''} · ${r.animals} 隻 · 讀 ${r.reads} 篇</small></div>
+      <div class="track">${SCENES.map(() => '<i></i>').join('')}<span class="runner" style="left:${(racePos(r) * 100).toFixed(1)}%">${esc([...r.nick][0] ?? '?')}</span></div>
+    </a></li>`).join('') || '<li class="empty">還沒有人</li>'}</ol></section>`;
+}
+
+/** ?local preview has no server: a few made-up runners around the local player. */
+function sampleBoard(s: GameState): Runner[] {
+  const names = ['小羊', '約書亞', '馬利亞', '提摩太', '路得'];
+  return [{ id: 0, nick: me!.nick, scene: s.currentSceneId, animals: s.animals.length, reads: s.reads.length },
+    ...names.map((nick, i) => ({ id: -1 - i, nick, scene: SCENES[(i * 2) % 6].id, animals: (i * 5) % 9, reads: 3 + i * 7 }))];
+}
+
+// ---------- 看別人的島 ----------
+async function showVisit(view: HTMLElement, uid: number): Promise<void> {
+  view.innerHTML = '<section class="panel"><p class="loading">載入中…</p></section>';
+  let v: Visit | null;
+  try {
+    v = localPreview ? { nick: '示範島', scene: SCENES[Math.abs(uid) % 6].id, animals: SPECIES.filter((x) => x.scene === SCENES[Math.abs(uid) % 6].id).map((x, i) => ({ id: `v${i}`, speciesId: x.id, level: ((i % 3) + 1) as 1 | 2 | 3, xp: 0, originSceneId: x.scene, createdAt: '', updatedAt: '' })) }
+      : await fetchIsland(getToken()!, uid);
+  } catch { v = null; }
+  if (!v) { view.innerHTML = '<section class="panel"><p class="err">找不到這座島</p><a class="link" href="#/race">回賽程</a></section>'; return; }
+  if (uid === me?.id) return void (location.hash = '#/island');
+  // Reuses the island page layout and sky; data-visit hides your own island underneath.
+  document.body.dataset.page = 'island';
+  document.body.dataset.visit = '1';
+  document.body.dataset.scene = v.scene;
+  const host = document.createElement('div');
+  host.className = 'stage visit-stage';
+  $('#view').before(host);
+  const island = new IslandView(host, v.scene);
+  island.setAnimals(v.animals);
+  const sc = sceneById(v.scene as GameState['currentSceneId']);
+  view.innerHTML = `<header class="hud">
+      <a href="#/race" class="logo" aria-label="回賽程">${ICON.flag}</a>
+      <h1 data-len="${sc.name.length}"><span>${sc.name}</span><small>${v.animals.length}/${sc.capacity}</small></h1>
+      <div class="today"><span>${esc(v.nick)}<br>的島</span></div>
+    </header>
+    <div class="hud-foot"><a class="pill" href="#/race">${ICON.flag}<span>回賽程</span></a><div class="divider"><i></i></div></div>`;
+  cleanup = () => { island.destroy(); host.remove(); };
+}
+
+// ---------- 後台 ----------
+async function showAdmin(view: HTMLElement): Promise<void> {
+  const ask = (err = '') => {
+    view.innerHTML = `<section class="panel login"><h2>管理員後台</h2>
+      <form><label>後台金鑰<input name="key" type="password" autocomplete="off" required></label>
+      <button class="primary">進入</button>${err ? `<p class="err">${esc(err)}</p>` : ''}</form>
+      <a class="link" href="#/island">回遊戲</a></section>`;
+    view.querySelector('form')!.onsubmit = (e) => {
+      e.preventDefault();
+      adminKey = String(new FormData(e.target as HTMLFormElement).get('key'));
+      void showAdmin(view);
+    };
+  };
+  if (!adminKey) return ask();
+  view.innerHTML = '<section class="panel"><p class="loading">載入中…</p></section>';
+  let rows: AdminRow[];
+  try { rows = await fetchAdmin(adminKey); } catch { adminKey = null; return ask('金鑰不正確'); }
+  const day = (t: string | null) => (t ? new Date(t).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '—');
+  rows.sort((a, b) => b.reads - a.reads);
+  const playing = rows.filter((r) => r.updated).length;
+  view.innerHTML = `<section class="panel admin"><h2>後台：所有人的情形</h2>
+    <p class="sub">共 ${rows.length} 人，${playing} 人玩過信息島，總共讀了 ${rows.reduce((n, r) => n + r.reads, 0)} 篇</p>
+    <div class="table-wrap"><table><thead><tr><th>暱稱</th><th>手機</th><th>場景</th><th>動物</th><th>讀篇</th><th>最後遊玩</th><th>加入</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td>${esc(r.nick)}</td><td>${esc(r.phone)}</td><td>${r.scene ? esc(sceneById(r.scene as GameState['currentSceneId'])?.name ?? r.scene) : '—'}</td>
+      <td>${r.animals}</td><td>${r.reads}</td><td>${day(r.updated)}</td><td>${day(r.created)}</td></tr>`).join('')}</tbody></table></div>
+    <button id="admin-out">登出後台</button></section>`;
+  $('#admin-out').onclick = () => { adminKey = null; location.hash = store ? '#/settings' : '#/'; };
 }

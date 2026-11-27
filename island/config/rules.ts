@@ -4,8 +4,6 @@ export const RULES = {
   questionsPerArticle: 2,
   xpPerArticle: 10,
   xpPerCorrect: 10,
-  maxCompanions: 3,
-  minReadSeconds: 90,
   /** Daily reset at 05:00 Asia/Taipei (UTC+8). */
   resetHourTaipei: 5,
   taipeiOffsetHours: 8,
@@ -16,7 +14,7 @@ export const RULES = {
   tierBounds: { rareMin: 3, preciousMin: 5, legendaryMin: 6 },
   startXp: { normal: 0, rare: 30, precious: 60, legendary: 100 },
   storageKey: 'xinxi-island:v1',
-  stateVersion: 2,
+  stateVersion: 3,
 } as const;
 
 export type EggTier = 'normal' | 'rare' | 'precious' | 'legendary';

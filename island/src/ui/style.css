@@ -102,8 +102,16 @@ button.egg-big { cursor: pointer; }
 .card.locked { opacity: .45; }
 .gold { color: var(--gold); font-size: 14px; }
 .mine { list-style: none; }
-.mine li { padding: 8px 0; border-bottom: 1px solid #F0E8D6; }
+.mine li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #F0E8D6; }
+.mine li img { width: 48px; height: 48px; object-fit: contain; }
+.mine li div { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
 .mine span { color: var(--soft); font-size: 14px; }
+.mine em { font-style: normal; color: var(--line); font-size: 14px; }
+.mine .up { display: flex; flex-direction: column; align-items: center; line-height: 1.2; padding: 6px 14px; border-radius: 12px; background: var(--moss); color: #fff; font-weight: 600; }
+.mine .up small { font-weight: 400; font-size: 12px; opacity: .9; }
+.mine .up:disabled { background: #E5DCC4; color: #9A8E70; cursor: default; }
+h3 small b { color: var(--line); }
+.hud .today b { font-size: 20px; color: #3E4A3A; }
 .scenes { list-style: none; }
 .scenes li { display: flex; justify-content: space-between; padding: 14px; border-radius: 14px; margin-bottom: 8px; background: #F6F1E3; }
 .scenes .current { background: #EAF2DF; border: 2px solid var(--moss); }
@@ -251,3 +259,63 @@ body[data-page="island"][data-scene="jerusalem"] { background: linear-gradient(#
 @keyframes rays-spin { to { rotate: 360deg; } }
 @keyframes rays-pulse { 50% { scale: 1.12; opacity: .75; } }
 @media (prefers-reduced-motion: reduce) { .rays { animation: none; } }
+
+/* 看別人的島: the island page layout with their island on top; your own stays hidden underneath. */
+body[data-visit] #stage { visibility: hidden; }
+
+/* 賽程: one track per person, six stops (one per island), the runner placed by progress. */
+.race-head { display: grid; grid-template-columns: repeat(6, 1fr); margin: 14px 0 4px; padding-left: 0; font-size: 12px; color: var(--soft); text-align: center; }
+.race ol { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.race li a { display: block; padding: 10px 12px 14px; border-radius: 14px; background: #F6F1E3; }
+.race li.me a { background: #EEF4E2; box-shadow: inset 0 0 0 1.5px var(--sage); }
+.race .who { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+.race .who b { color: var(--line); font-family: var(--serif); }
+.race .who small { font-weight: 400; color: var(--soft); font-size: 13px; }
+.race .track { position: relative; display: grid; grid-template-columns: repeat(6, 1fr); height: 10px; margin: 16px 6px 0; border-radius: 5px; background: #E5DCC4; }
+.race .track i { border-right: 2px solid #FFFDF7; }
+.race .track i:last-child { border: 0; }
+.race .runner { position: absolute; top: 50%; translate: -50% -50%; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--moss); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 2px 6px rgba(74, 66, 50, .25); transition: left .8s ease; }
+.race li.me .runner { background: var(--line); }
+
+/* 後台 */
+.admin .table-wrap { overflow-x: auto; margin: 12px 0; }
+.admin table { border-collapse: collapse; font-size: 14px; white-space: nowrap; width: 100%; }
+.admin th, .admin td { padding: 6px 8px; border-bottom: 1px solid #EDE5D0; text-align: left; }
+.admin th { color: var(--soft); font-weight: 500; }
+body[data-page="admin"] .panel { max-width: 900px; margin: 0 auto; }
+
+/* 場景轉場 (designstructure §3.9), 3 s full-screen overlay over the grey-out slide. */
+.move { position: fixed; inset: 0; z-index: 50; pointer-events: none; overflow: hidden; display: grid; place-items: center; }
+.move i { position: absolute; }
+.move p { position: relative; text-align: center; font-family: var(--serif); font-size: 20px; letter-spacing: 2px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.35); animation: move-text 3s ease forwards; }
+.move p b { font-size: 34px; letter-spacing: 6px; }
+@keyframes move-text { 0%, 15% { opacity: 0; translate: 0 12px; } 30%, 70% { opacity: 1; translate: 0 0; } 100% { opacity: 0; } }
+/* 伊甸園→方舟: water rises over the screen, then recedes. */
+.move-ark .a { inset: 0; background: linear-gradient(#7FB6D9 0 6%, #4D8FBF 30%, #2F6E9E); animation: flood 3s ease-in-out forwards; }
+.move-ark .a::before { content: ""; position: absolute; left: -10%; right: -10%; top: -30px; height: 60px; border-radius: 50%; background: #9CCBE6; animation: wave 1s ease-in-out infinite alternate; }
+@keyframes flood { 0% { translate: 0 100%; } 35%, 65% { translate: 0 0; } 100% { translate: 0 105%; } }
+@keyframes wave { to { translate: 5% 6px; } }
+/* 方舟→西奈山: the Red Sea splits, two walls of water part in the middle. */
+.move-wilderness .a, .move-wilderness .b { top: 0; bottom: 0; width: 52%; background: linear-gradient(90deg, #2D6C9A, #4F94C2 70%, #A9D6EE); }
+.move-wilderness .a { left: 0; animation: part-l 3s ease-in-out forwards; }
+.move-wilderness .b { right: 0; scale: -1 1; animation: part-r 3s ease-in-out forwards; }
+@keyframes part-l { 0% { translate: -100% 0; } 25%, 45% { translate: 0 0; } 100% { translate: -100% 0; } }
+@keyframes part-r { 0% { translate: 100% 0; } 25%, 45% { translate: 0 0; } 100% { translate: 100% 0; } }
+/* 西奈山→伯利恆: fade to night, one star appears and brightens. */
+.move-bethlehem .a { inset: 0; background: radial-gradient(#2B3566, #121733); animation: night 3s ease forwards; }
+.move-bethlehem .b { left: 50%; top: 28%; width: 18px; height: 18px; translate: -50% -50%; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 20px 8px #FFF3B8, 0 0 70px 24px rgba(255, 230, 140, .6); animation: star 3s ease forwards; }
+@keyframes night { 0% { opacity: 0; } 25%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes star { 0%, 20% { scale: 0; opacity: 0; } 50% { scale: 1.6; opacity: 1; } 70% { scale: 1; opacity: 1; } 100% { scale: 1; opacity: 0; } }
+/* 伯利恆→加利利海: down the hill to the lake at dawn (a tall night-to-dawn sky slides up). */
+.move-galilee .a { left: 0; right: 0; top: 0; height: 300%; background: linear-gradient(#1F2650, #5A4C86 30%, #E59A7B 55%, #F7D9A6 70%, #8EC3DA 85%, #5C9BC0); animation: dawn 3s ease-in-out forwards; }
+@keyframes dawn { 0% { translate: 0 0; opacity: 0; } 15% { opacity: 1; } 75% { translate: 0 -66.6%; opacity: 1; } 100% { translate: 0 -66.6%; opacity: 0; } }
+/* 加利利海→新耶路撒冷: clouds part, golden rays shine through. */
+.move-jerusalem { background: repeating-conic-gradient(from 0deg at 50% 45%, rgba(255, 222, 140, .9) 0 6deg, rgba(255, 246, 214, .7) 6deg 15deg); animation: night 3s ease forwards; }
+.move-jerusalem .a, .move-jerusalem .b { top: -10%; bottom: -10%; width: 70%; background: radial-gradient(circle at 70% 30%, #fff 0 22%, transparent 23%), radial-gradient(circle at 40% 60%, #fff 0 28%, transparent 29%), radial-gradient(circle at 80% 80%, #F4F1FA 0 25%, transparent 26%), #F7F5FB; border-radius: 40%; }
+.move-jerusalem .a { left: -10%; animation: cloud-l 3s ease-in-out forwards; }
+.move-jerusalem .b { right: -10%; scale: -1 1; animation: cloud-r 3s ease-in-out forwards; }
+@keyframes cloud-l { 0%, 25% { translate: 0 0; } 70%, 100% { translate: -110% 0; } }
+@keyframes cloud-r { 0%, 25% { translate: 0 0; } 70%, 100% { translate: 110% 0; } }
+.move-jerusalem p { color: #8A6420; text-shadow: 0 0 12px #fff; }
