@@ -148,6 +148,9 @@ h3 small b { color: var(--line); }
   background: repeating-linear-gradient(90deg, #E0A82E 0 8px, transparent 8px 13px); }
 .critter .aim::after { content: ""; position: absolute; right: -8px; top: 50%; translate: 0 -50%; border: 7px solid transparent; border-left: 10px solid #E0A82E; border-right: 0; }
 .critter:not(.aiming) .aim { display: none; }
+.critter .go { display: none; position: absolute; left: 50%; bottom: 100%; translate: -50% -6px; white-space: nowrap; pointer-events: none; font-style: normal; font-weight: 800; font-size: 15px; color: #E07A2E; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.critter.dashing .go { display: block; }
+.critter.dashing .name { visibility: hidden; }
 .critter.aiming img { animation: tremble .12s linear infinite alternate; }
 @keyframes tremble { from { translate: -1px 0; } to { translate: 1px 0; } }
 @keyframes shout { to { transform: rotate(-12deg) scale(1.2); } }

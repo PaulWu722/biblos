@@ -59,6 +59,8 @@ interface Sprite {
   height: number; level: 1 | 2 | 3; golden: boolean; x: number; y: number; tx: number; ty: number; idle: number; mode: Mode;
   /** Sprinting in a straight line (tapped or bumped), bouncing off the island's edge. */
   dash?: { vx: number; vy: number; t: number }; held?: boolean;
+  /** Seconds before another bump can set it off, so a pair bounces apart once instead of every frame. */
+  cool?: number;
   /** Dropped off the island: falls to the bottom of the screen ('out'), then drops back in from the top ('in'). */
   fall?: { vy: number; t: number; phase: 'out' | 'in' }; }
 
@@ -227,7 +229,7 @@ export class IslandView {
       el.style.setProperty('--d', `${-Math.random() * 3.2}s`); // dancers out of step with each other
       // Sprites live with the species' home scene, so animals carried over from earlier islands still show.
       const home = speciesById(a.speciesId).scene;
-      el.innerHTML = `<b class="name"></b><i class="shout" aria-hidden="true">！</i><i class="cry" aria-hidden="true">啊～～</i><i class="aim" aria-hidden="true"></i><img alt="" draggable="false"><i class="rays"></i><i class="halo"></i><i class="note" aria-hidden="true">♪</i>`;
+      el.innerHTML = `<b class="name"></b><i class="shout" aria-hidden="true">！</i><i class="cry" aria-hidden="true">啊～～</i><i class="aim" aria-hidden="true"></i><i class="go" aria-hidden="true">衝啊～</i><img alt="" draggable="false"><i class="rays"></i><i class="halo"></i><i class="note" aria-hidden="true">♪</i>`;
       const s: Sprite = { el, species: a.speciesId, home, right: false, height: this.layout.animalHeight, level: a.level, golden: golden.includes(home), x, y, tx: x, ty: y, idle: mode === 'still' ? Infinity : Math.random() * 2, mode };
       this.applyLevel(s, a.level);
       el.querySelector('.name')!.textContent = a.name ?? ''; // textContent: visited islands' names are other players' text
@@ -278,7 +280,7 @@ export class IslandView {
     const el = s.el, [px, py] = this.toIsland(e), ox = s.x - px, oy = s.y - py, aim = el.querySelector<HTMLElement>('.aim')!;
     el.setPointerCapture(e.pointerId);
     let mode: 'tap' | 'carry' | 'sling' = 'tap', pull = [0, 0];
-    const hold = setTimeout(() => { mode = 'sling'; s.held = true; el.classList.add('aiming'); el.classList.remove('idle'); }, 300);
+    const hold = setTimeout(() => { mode = 'sling'; s.held = true; this.endDash(s); el.classList.add('aiming'); el.classList.remove('idle'); }, 300);
     const move = (m: PointerEvent) => {
       const dx = m.clientX - e.clientX, dy = m.clientY - e.clientY, d = Math.hypot(dx, dy);
       if (mode === 'sling') {
@@ -290,7 +292,7 @@ export class IslandView {
       }
       if (mode === 'tap' && d < 8) return;
       clearTimeout(hold);
-      mode = 'carry'; s.held = true; el.classList.add('held'); el.classList.remove('idle');
+      mode = 'carry'; s.held = true; this.endDash(s); el.classList.add('held'); el.classList.remove('idle');
       const [x, y] = this.toIsland(m); s.x = x + ox; s.y = y + oy; this.place(s, 0);
     };
     const up = (u: PointerEvent) => {
@@ -337,7 +339,23 @@ export class IslandView {
   /** Sprint along (dx, dy) for a moment; 20× walking speed. */
   private startDash(s: Sprite, dx: number, dy: number, t = 0.7): void {
     const v = this.layout!.width * 0.035 * 20, n = Math.hypot(dx, dy) || 1;
-    s.dash = { vx: (dx / n) * v, vy: (dy / n) * v, t }; s.idle = 0; s.el.classList.remove('idle');
+    s.dash = { vx: (dx / n) * v, vy: (dy / n) * v, t }; s.idle = 0; s.el.classList.remove('idle'); s.el.classList.add('dashing');
+  }
+
+  private endDash(s: Sprite): void { s.dash = undefined; s.el.classList.remove('dashing'); }
+
+  /** Pinball: any two animals that touch, walking or sprinting, push off each other and both sprint apart. */
+  private bump(): void {
+    const all = [...this.sprites.values()].filter((s) => !s.held && !s.fall && s.mode !== 'still');
+    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+      const a = all[i]!, b = all[j]!;
+      if ((a.cool ?? 0) > 0 && (b.cool ?? 0) > 0) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, reach = (a.height * LEVEL_SCALE[a.level] + b.height * LEVEL_SCALE[b.level]) * 0.22;
+      if (Math.hypot(dx, dy) >= reach) continue;
+      const ang = dx || dy ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2; // exactly on top of each other: any way apart
+      this.startDash(a, -Math.cos(ang), -Math.sin(ang)); this.startDash(b, Math.cos(ang), Math.sin(ang));
+      a.cool = b.cool = 0.3;
+    }
   }
 
   /** One frame of a sprint: bounce off the island's edge, and set off any animal it runs into. */
@@ -348,14 +366,8 @@ export class IslandView {
     else if (!this.offIsland(nx, s.y - d.vy * dt)) { d.vy = -d.vy; s.x = nx; s.y += d.vy * dt; }
     else { d.vx = -d.vx; d.vy = -d.vy; }
     if (Math.abs(d.vx) > 1) s.el.classList.toggle('flip', d.vx > 0 !== s.right);
-    const reach = s.height * LEVEL_SCALE[s.level] * 0.45;
-    for (const o of this.sprites.values()) {
-      if (o === s || o.dash || o.fall || o.held || o.mode === 'still') continue;
-      const ox = o.x - s.x, oy = o.y - s.y;
-      if (Math.hypot(ox, oy) < reach) this.startDash(o, ox || d.vx, oy || d.vy);
-    }
     d.t -= dt;
-    if (d.t <= 0) { s.dash = undefined; s.tx = s.x; s.ty = s.y; s.idle = 1.5 + Math.random() * 2; s.el.classList.add('idle'); }
+    if (d.t <= 0) { this.endDash(s); s.tx = s.x; s.ty = s.y; s.idle = 1.5 + Math.random() * 2; s.el.classList.add('idle'); }
     this.place(s, s.mode === 'fly' ? Math.sin(now / 400) * 3 : s.mode === 'swim' ? 0 : Math.abs(Math.sin(now / 60)) * 5);
   }
 
@@ -379,7 +391,9 @@ export class IslandView {
     this.last = now;
     if (this.reduced || !this.layout) return;
     const speed = this.layout.width * 0.035; // px of island.png per second
+    this.bump();
     for (const s of this.sprites.values()) {
+      if (s.cool) s.cool = Math.max(0, s.cool - dt);
       if (s.held) continue;
       if (s.fall) { this.fallStep(s, dt); continue; }
       if (s.dash) { this.dashStep(s, dt, now); continue; }
