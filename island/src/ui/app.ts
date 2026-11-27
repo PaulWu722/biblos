@@ -196,7 +196,7 @@ async function showBooks(view: HTMLElement, s: GameState, book: BookId): Promise
     <div class="chips">${BOOK_IDS.map((b) => `<a href="#/books/${b}" class="${b === book ? 'on' : ''}">${BOOKS[b]}</a>`).join('')}</div>
     <ol class="articles">${list.map((i) => {
       const read = done.has(articleId(book, i));
-      return `<li class="${read ? 'read' : ''}"><a href="#/read/${book}/${i}"><span class="n">${i + 1}</span>${esc(titles[book][i] ?? '')}${read ? '<em>已讀</em>' : ''}</a></li>`;
+      return `<li class="${read ? 'read' : ''}"><a href="#/read/${book}/${i}"><span class="n">${read ? '✓' : i + 1}</span>${esc(titles[book][i] ?? '')}${read ? '<em>✓ 已讀完</em>' : ''}</a></li>`;
     }).join('') || '<li class="empty">這本書的題目還在準備中</li>'}</ol></section>`;
 }
 

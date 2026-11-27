@@ -33,7 +33,7 @@
     <h2>選一篇來讀</h2>
     <p class="sub">再讀 ${e.articlesPerEgg-n.pendingBatch.length} 篇得一顆蛋，篇數不限、可自由挑選。</p>
     <div class="chips">${se.map(e=>`<a href="#/books/${e}" class="${e===r?`on`:``}">${S[e]}</a>`).join(``)}</div>
-    <ol class="articles">${s.map(e=>{let t=o.has(w(r,e));return`<li class="${t?`read`:``}"><a href="#/read/${r}/${e}"><span class="n">${e+1}</span>${I(i[r][e]??``)}${t?`<em>已讀</em>`:``}</a></li>`}).join(``)||`<li class="empty">這本書的題目還在準備中</li>`}</ol></section>`}async function De(e,t,n){e.innerHTML=`<section class="panel"><p class="loading">載入中…</p></section>`;let r;try{r=await T(t,n)}catch{e.innerHTML=`<section class="panel"><p class="err">找不到這篇，或題目還沒準備好。</p><a href="#/books">回到選篇</a></section>`;return}let i=R.state.reads.some(e=>e.articleId===r.id);if(e.innerHTML=`<article class="panel reader">
+    <ol class="articles">${s.map(e=>{let t=o.has(w(r,e));return`<li class="${t?`read`:``}"><a href="#/read/${r}/${e}"><span class="n">${t?`✓`:e+1}</span>${I(i[r][e]??``)}${t?`<em>✓ 已讀完</em>`:``}</a></li>`}).join(``)||`<li class="empty">這本書的題目還在準備中</li>`}</ol></section>`}async function De(e,t,n){e.innerHTML=`<section class="panel"><p class="loading">載入中…</p></section>`;let r;try{r=await T(t,n)}catch{e.innerHTML=`<section class="panel"><p class="err">找不到這篇，或題目還沒準備好。</p><a href="#/books">回到選篇</a></section>`;return}let i=R.state.reads.some(e=>e.articleId===r.id);if(e.innerHTML=`<article class="panel reader">
     <p class="meta">${S[t]} · 第 ${n+1} 篇</p><h2>${I(r.title)}</h2>
     ${r.paragraphs.map(e=>`<p>${I(e)}</p>`).join(``)}
     <div id="end"></div>
