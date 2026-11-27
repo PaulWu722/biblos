@@ -320,3 +320,39 @@ body[data-page="admin"] .panel { max-width: 900px; margin: 0 auto; }
 @keyframes cloud-r { 0%, 25% { translate: 0 0; } 70%, 100% { translate: 110% 0; } }
 .move-jerusalem p { color: #8A6420; text-shadow: 0 0 12px #fff; }
 .float-island { transition: opacity .5s; } .float-island.loading { opacity: 0; }
+
+/* Every page sits on the current island's sky; panels are frosted so the sky shows through. */
+body { background-attachment: fixed; }
+body[data-scene="eden"] { background: linear-gradient(#D0D4ED, #E6F3E9 38%, #FEF1DE 62%, #E0DFE9) fixed; }
+body[data-scene="ark"] { background: linear-gradient(#D4D8F4, #E4EFEC 38%, #FDEFE1 62%, #DFDEEF) fixed; }
+body[data-scene="wilderness"] { background: linear-gradient(#F3DBD5, #F0D7C7 38%, #FDE7D7 62%, #F8E7E1) fixed; }
+body[data-scene="galilee"] { background: linear-gradient(#D7D6F5, #E7F2ED 38%, #FDF0E5 62%, #E2DDF0) fixed; }
+body[data-scene="bethlehem"] { background: linear-gradient(#B1B5DB, #C6C3E0 38%, #DECFDF 62%, #D8C8DE) fixed; }
+body[data-scene="jerusalem"] { background: linear-gradient(#FEEFD8, #FDF5DF 38%, #FEEFDF 62%, #E3E0EB) fixed; }
+body[data-page="login"], body[data-page="admin"] { background: linear-gradient(#D0D4ED, #E6F3E9 38%, #FEF1DE 62%, #E0DFE9) fixed; }
+.panel { background: rgba(255, 253, 247, .55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.panel + .panel { margin-top: 14px; }
+.tabs { background: rgba(255, 253, 247, .35); }
+
+/* Book picker: two rows instead of one sideways-scrolling line. */
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); overflow: visible; }
+.chips a { text-align: center; padding: 8px 2px; font-size: 14px; white-space: nowrap; }
+
+/* Egg name under each egg. */
+.egg-item { display: flex; flex-direction: column; align-items: center; }
+.egg-item .egg-big { margin-bottom: 4px; }
+.tier { display: inline-block; font-weight: 700; font-size: 15px; padding: 2px 12px; border-radius: 99px; background: #F0E8D6; color: var(--ink); }
+.tier.rare { background: #DCEBF7; color: #2F6E9E; }
+.tier.precious { background: #EFE0F5; color: #7A4C93; }
+.tier.legendary { background: linear-gradient(90deg, #FFE9A8, #F3C969); color: #7A5410; }
+
+/* Login guide bear. */
+.login { margin-top: 12px; }
+.guide { display: flex; align-items: flex-end; gap: 6px; max-width: 640px; margin: 4vh auto 0; }
+.bear { flex: none; width: 92px; animation: bear-bob 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes bear-bob { 50% { transform: translateY(-5px) rotate(-3deg); } }
+.bubble { position: relative; flex: 1; background: rgba(255, 253, 247, .9); border-radius: 18px; padding: 12px 14px; font-size: 15px; line-height: 1.55; box-shadow: 0 4px 14px rgba(74, 66, 50, .1); margin-bottom: 20px; }
+.bubble::before { content: ""; position: absolute; left: -9px; bottom: 18px; border: 9px solid transparent; border-right-color: rgba(255, 253, 247, .9); border-left: 0; }
+.bubble b { display: block; color: #8A5A2B; margin-bottom: 4px; }
+.bubble ol { padding-left: 1.3em; }
+@media (prefers-reduced-motion: reduce) { .bear { animation: none; } }

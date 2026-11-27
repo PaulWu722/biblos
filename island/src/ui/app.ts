@@ -83,6 +83,7 @@ function route(): void {
   const s = store.state;
   const view = $('#view');
   document.body.dataset.page = page;
+  document.body.dataset.scene = s.currentSceneId;
   tabs(page);
   if (page === 'island') return showIsland(view, s);
   if (page === 'books') return void showBooks(view, s, (args[0] as BookId) || 'lee');
@@ -90,7 +91,7 @@ function route(): void {
   if (page === 'quiz') return void showQuiz(view, args[0] as BookId, Number(args[1]));
   if (page === 'egg') return showEggs(view, s);
   if (page === 'collection') return showCollection(view, s);
-  if (page === 'scenes') return showScenes(view, s);
+  if (page === 'scenes') return void (location.hash = '#/collection');
   if (page === 'race') return void showRace(view, s);
   if (page === 'visit') return void showVisit(view, Number(args[0]));
   if (page === 'settings') return showSettings(view);
@@ -98,19 +99,38 @@ function route(): void {
 }
 
 function tabs(page: string): void {
-  const items = [['island', '島嶼', ICON.island], ['race', '賽程', ICON.flag], ['collection', '圖鑑', ICON.book], ['scenes', '場景', ICON.mountains]] as const;
-  const active = ['books', 'read', 'quiz', 'egg', 'settings'].includes(page) ? 'island' : page === 'visit' ? 'race' : page;
+  const items = [['island', '島嶼', ICON.island], ['books', '讀信息', ICON.book], ['race', '賽程', ICON.flag], ['collection', '圖鑑', ICON.mountains]] as const;
+  const active = ['read', 'quiz'].includes(page) ? 'books' : ['egg', 'settings'].includes(page) ? 'island' : page === 'visit' ? 'race' : page;
   $('#tabs').innerHTML = items.map(([id, label, icon]) => `<a href="#/${id}" class="${id === active ? 'on' : ''}">${icon}<span>${label}</span></a>`).join('');
 }
 
 // ---------- 登入 ----------
+const T = RULES.tierBounds;
+/** Cute bear guide on the login page, explaining how the island works. */
+const BEAR = `<div class="guide"><svg class="bear" viewBox="0 0 120 130" aria-hidden="true">
+  <circle cx="30" cy="30" r="16" fill="#B07A4F"/><circle cx="90" cy="30" r="16" fill="#B07A4F"/>
+  <circle cx="30" cy="30" r="8" fill="#E8B98F"/><circle cx="90" cy="30" r="8" fill="#E8B98F"/>
+  <ellipse cx="60" cy="112" rx="34" ry="22" fill="#B07A4F"/><ellipse cx="60" cy="116" rx="18" ry="13" fill="#E8B98F"/>
+  <circle cx="60" cy="58" r="40" fill="#C08A5B"/>
+  <ellipse cx="60" cy="72" rx="17" ry="13" fill="#F1D3B0"/>
+  <circle cx="45" cy="54" r="4.5" fill="#3B2A1E"/><circle cx="75" cy="54" r="4.5" fill="#3B2A1E"/>
+  <circle cx="46.5" cy="52.5" r="1.5" fill="#fff"/><circle cx="76.5" cy="52.5" r="1.5" fill="#fff"/>
+  <ellipse cx="60" cy="66" rx="6" ry="4.5" fill="#3B2A1E"/>
+  <path d="M54 74q6 6 12 0" stroke="#3B2A1E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="35" cy="68" rx="7" ry="4.5" fill="#F29B9B" opacity=".6"/><ellipse cx="85" cy="68" rx="7" ry="4.5" fill="#F29B9B" opacity=".6"/>
+</svg><div class="bubble"><b>歡迎來到信息島！我是小熊，跟你說登島規則：</b><ol>
+  <li>用手機號碼登島，不用密碼，換手機也能接著玩。</li>
+  <li>每讀完一篇信息，回答 ${RULES.questionsPerArticle} 題。</li>
+  <li>讀 ${RULES.articlesPerEgg} 篇得一顆蛋。${RULES.articlesPerEgg} 篇共 ${RULES.articlesPerEgg * RULES.questionsPerArticle} 題，答對 ${T.rareMin} 題以上是稀有蛋，${T.preciousMin} 題是珍貴蛋，全對是傳說蛋。</li>
+  <li>孵出動物，用經驗值幫牠長大。</li>
+  <li>島住滿了，大家就一起搬到下一座島。</li></ol></div></div>`;
 function showLogin(): void {
   document.body.dataset.page = 'login';
   $('#tabs').innerHTML = '';
   const view = $('#view');
   let needNick = false;
   const draw = (phone = '', err = '') => {
-    view.innerHTML = `<section class="panel login">
+    view.innerHTML = `${BEAR}<section class="panel login">
       <h1>信息島</h1><p class="sub">讀信息、答題、孵蛋，讓島上住滿動物</p>
       <form><label>手機號碼<input name="phone" inputmode="numeric" autocomplete="tel" value="${esc(phone)}" required></label>
       ${needNick ? '<label>暱稱（第一次登入）<input name="nick" maxlength="12" required></label>' : ''}
@@ -244,7 +264,7 @@ async function showQuiz(view: HTMLElement, book: BookId, idx: number): Promise<v
       ${rej?.type === 'REJECTED' ? `<h2>沒有計入</h2><p>${REJECT_TEXT[rej.reason] ?? '請再試一次。'}</p>`
         : `<h2>答對 ${correct} / ${art.questions.length} 題</h2>
            <p>得到 ${xp} 點經驗，累積到 ${store!.state.xp} 點</p><p class="sub">到圖鑑可以用經驗值幫動物升級</p>
-           ${egg?.type === 'EGG_EARNED' ? `${eggArt(egg.egg.tier, 'div')}<p class="big">得到一顆${TIER_LABEL[egg.egg.tier]}！</p><a class="primary" href="#/egg">去孵蛋</a>`
+           ${egg?.type === 'EGG_EARNED' ? `${eggArt(egg.egg.tier, 'div')}<span class="tier ${egg.egg.tier}">${TIER_LABEL[egg.egg.tier]}</span><p class="big">得到一顆${TIER_LABEL[egg.egg.tier]}！</p><a class="primary" href="#/egg">去孵蛋</a>`
              : `<p class="sub">再讀 ${left} 篇得一顆蛋</p><a class="primary" href="#/books/${book}">再讀一篇</a>`}`}
       <a href="#/island" class="link">回到島上</a></section>`;
   };
@@ -261,7 +281,7 @@ function showEggs(view: HTMLElement, s: GameState): void {
   const eggs = s.eggs.filter((e) => !e.hatched);
   view.innerHTML = `<section class="panel eggs"><h2>孵蛋</h2>
     ${eggs.length ? '<p class="sub">點一下蛋來孵化</p>' : '<p class="sub">目前沒有蛋。讀 3 篇信息就能得到一顆。</p><a class="primary" href="#/books">去讀信息</a>'}
-    <div class="egg-row">${eggs.map((e) => eggArt(e.tier, 'button', `data-id="${e.id}" aria-label="${TIER_LABEL[e.tier]}"`)).join('')}</div>
+    <div class="egg-row">${eggs.map((e) => `<div class="egg-item">${eggArt(e.tier, 'button', `data-id="${e.id}" aria-label="${TIER_LABEL[e.tier]}"`)}<span class="tier ${e.tier}">${TIER_LABEL[e.tier]}</span></div>`).join('')}</div>
     <div id="hatched"></div></section>`;
   view.querySelectorAll<HTMLButtonElement>('.egg-row button').forEach((b) => (b.onclick = async () => {
     view.querySelectorAll('.egg-row button').forEach((x) => ((x as HTMLButtonElement).disabled = true));
@@ -308,7 +328,7 @@ function showCollection(view: HTMLElement, s: GameState): void {
         return c ? `<div class="card${c.maxLevel === 3 ? ' lv3' : ''}${gold ? ' golden' : ''}">${img}<b>${x.name}</b><span>${stars(c.maxLevel)}</span><small>×${c.count}</small></div>`
           : `<div class="card locked">${img}<b>？</b></div>`;
       }).join('')}</div>`).join('')}
-</section>`;
+</section>${scenesHtml(s)}`;
   view.querySelectorAll<HTMLButtonElement>('.mine .up').forEach((b) => (b.onclick = async () => {
     b.disabled = true;
     const y = scrollY;
@@ -316,17 +336,20 @@ function showCollection(view: HTMLElement, s: GameState): void {
     showCollection(view, store!.state);
     scrollTo(0, y);
   }));
+  bindScenes(view, s);
 }
 
 // ---------- 場景 ----------
-function showScenes(view: HTMLElement, s: GameState): void {
-  view.innerHTML = `<section class="panel"><h2>場景</h2>
+function scenesHtml(s: GameState): string {
+  return `<section class="panel" id="scenes"><h2>場景</h2>
     <p class="sub">目前的島住滿，就會解鎖下一個場景，所有動物一起搬過去。</p>
     <ol class="scenes">${SCENES.map((sc) => {
       const st = sc.id === s.currentSceneId ? 'current' : s.unlockedSceneIds.includes(sc.id) ? 'done' : 'locked';
       const label = st === 'current' ? `${s.animals.length}/${sc.capacity} 隻` : st === 'done' ? '回憶島' : `容量 ${sc.capacity}`;
       return `<li class="${st}" data-id="${sc.id}"><b>${sc.order}. ${sc.name}</b><span>${label}</span></li>`;
     }).join('')}</ol>${localPreview ? '<p class="hint">本機預覽：點任一場景直接切換（正式版沒有這個功能）</p>' : ''}</section>`;
+}
+function bindScenes(view: HTMLElement, s: GameState): void {
   if (!localPreview) return;
   view.querySelectorAll<HTMLLIElement>('.scenes li').forEach((li) => (li.onclick = () => {
     const id = li.dataset.id as typeof s.currentSceneId;
