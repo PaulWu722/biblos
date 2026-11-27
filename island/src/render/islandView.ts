@@ -179,6 +179,9 @@ export class IslandView {
       + (layout.fire ?? []).map((f, i) => `<div class="fire" style="left:${(f.x / width) * 100}%;top:${(f.y / height) * 100}%;width:${(f.w / width) * 100}%;height:${(f.h / height) * 100}%;animation-delay:${-i * 0.37}s">`
         + `<i class="glow"></i><img src="${dir}${f.src}" alt="" draggable="false"></div>`).join('')
       + '</div>';
+    // Keep the island hidden until its picture arrives, so the water and animals never float on their own.
+    const plate = this.box.querySelector<HTMLImageElement>('.plate')!, box = this.box;
+    if (!plate.complete) { box.classList.add('loading'); plate.addEventListener('load', () => box.classList.remove('loading'), { once: true }); plate.addEventListener('error', () => box.classList.remove('loading'), { once: true }); }
     this.setAnimals(this.pending);
     this.start();
   }

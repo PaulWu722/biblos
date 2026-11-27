@@ -319,3 +319,4 @@ body[data-page="admin"] .panel { max-width: 900px; margin: 0 auto; }
 @keyframes cloud-l { 0%, 25% { translate: 0 0; } 70%, 100% { translate: -110% 0; } }
 @keyframes cloud-r { 0%, 25% { translate: 0 0; } 70%, 100% { translate: 110% 0; } }
 .move-jerusalem p { color: #8A6420; text-shadow: 0 0 12px #fff; }
+.float-island { transition: opacity .5s; } .float-island.loading { opacity: 0; }
